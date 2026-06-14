@@ -4,3 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+
+[[bin]]
+name = "argo"
+path = "src/main.rs"
+
+[[bin]]
+name = "init"
+path = "src/bin/init.rs"

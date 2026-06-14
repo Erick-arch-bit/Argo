@@ -4,7 +4,9 @@ Gracias por tu interés en contribuir a Argo. Este documento describe el flujo d
 
 ## Flujo de trabajo
 
-1. **Haz un fork** del repositorio y crea tu rama desde `dev`.
+### Para contribuidores externos
+
+1. **Haz un fork** del repositorio y crea tu rama desde `contribuciones`.
 2. **Desarrolla en tu rama** siguiendo los estándares del código.
 3. **Asegúrate de que compile** sin errores ni advertencias:
    ```bash
@@ -12,7 +14,13 @@ Gracias por tu interés en contribuir a Argo. Este documento describe el flujo d
    cargo clippy
    ```
 4. **Prueba tus cambios** ejecutando el intérprete con los scripts de ejemplo.
-5. **Abre un Pull Request** contra la rama `dev`.
+5. **Abre un Pull Request** contra la rama `contribuciones`.
+
+### Flujo interno de aprobación
+
+1. Los PRs en `contribuciones` y `seguridad` se revisan y se fusionan a `revision`.
+2. En `revision` se hacen las pruebas de integración finales.
+3. Una vez aprobado, se fusiona de `revision` a `dev`.
 
 ## Estándares de código
 
@@ -24,9 +32,10 @@ Gracias por tu interés en contribuir a Argo. Este documento describe el flujo d
 
 ## Ramas
 
-- `dev` — Rama principal de desarrollo.
+- `dev` — Rama principal de desarrollo. **Protegida**: solo el mantenedor puede hacer push directo; el resto requiere PR aprobado.
 - `contribuciones` — Rama de integración para características del lenguaje aportadas por la comunidad. Los PRs de nuevas funcionalidades deben dirigirse aquí.
 - `seguridad` — Rama para parches y mejoras de seguridad.
+- `revision` — Rama interna de aprobación. Los cambios aprobados en `contribuciones` y `seguridad` se fusionan aquí para pruebas finales antes de pasar a `dev`.
 
 ## Reportar issues
 

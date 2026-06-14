@@ -147,14 +147,27 @@ echo -e "  ${DIM}argo test${RST}     Run your test suite"
 echo -e "  ${DIM}argo build${RST}    Compile for production"
 echo ""
 
-# PATH warning
+# PATH auto‑injection
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-    echo -e "  ${ORG}⚠${RST}  ${DIM}Add to your ~/.bashrc or ~/.zshrc:${RST}"
-    echo -e "     ${DIM}export PATH=\"\${HOME}/.local/bin:\${PATH}\"${RST}"
-    echo ""
+    # Detectar perfil
+    if [[ -n "$ZSH_VERSION" || -f "$HOME/.zshrc" ]]; then
+        PROFILE="$HOME/.zshrc"
+    else
+        PROFILE="$HOME/.bashrc"
+    fi
+
+    if ! grep -q "${INSTALL_DIR}" "$PROFILE" 2>/dev/null; then
+        echo "" >> "$PROFILE"
+        echo "# Argo" >> "$PROFILE"
+        echo "export PATH=\"${INSTALL_DIR}:\$PATH\"" >> "$PROFILE"
+        echo -e " $(badge "path" "$ORANGE_BG") Auto‑added ${DIM}${INSTALL_DIR}${RST} to ${DIM}${PROFILE}${RST}"
+        echo ""
+        echo -e "  ${DIM}Run this to use Argo right now:${RST}"
+        echo -e "     ${BLD}source ${PROFILE}${RST}"
+    else
+        echo -e " $(badge "path" "$GRAY_BG") ${DIM}${INSTALL_DIR}${RST} already in ${DIM}${PROFILE}${RST}"
+    fi
 fi
 
-echo -e "  ${DIM}Reload your terminal and try: argo --version${RST}"
-echo ""
-
+echo -e ""
 echo -e "${SHOW}"

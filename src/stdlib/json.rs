@@ -114,15 +114,21 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    fn parsear_valor(&mut self) -> Result<Objeto, String> {
+    fn parsear_valor(&mut self, profundidad: usize) -> Result<Objeto, String> {
+        if profundidad > 128 {
+            return Err(
+                "Error de seguridad: Estructura JSON demasiado profunda"
+                    .to_string(),
+            );
+        }
         self.saltar_blancos();
         let resto = self.resto();
         if resto.is_empty() {
             return Err("JSON: entrada vacía o inesperada".to_string());
         }
         match resto.as_bytes()[0] {
-            b'{' => self.parsear_objeto(),
-            b'[' => self.parsear_arreglo(),
+            b'{' => self.parsear_objeto(profundidad + 1),
+            b'[' => self.parsear_arreglo(profundidad + 1),
             b'"' => self.parsear_cadena(),
             b't' => {
                 if resto.starts_with("true") {
@@ -272,7 +278,7 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    fn parsear_objeto(&mut self) -> Result<Objeto, String> {
+    fn parsear_objeto(&mut self, profundidad: usize) -> Result<Objeto, String> {
         self.esperar('{')?;
         self.saltar_blancos();
         let mut mapa = HashMap::new();
@@ -288,7 +294,7 @@ impl<'a> JsonParser<'a> {
                 _ => unreachable!(),
             };
             self.esperar(':')?;
-            let valor = self.parsear_valor()?;
+            let valor = self.parsear_valor(profundidad)?;
             mapa.insert(LlaveHash::Cadena(clave_str), valor);
             self.saltar_blancos();
             if self.resto().starts_with('}') {
@@ -299,7 +305,7 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    fn parsear_arreglo(&mut self) -> Result<Objeto, String> {
+    fn parsear_arreglo(&mut self, profundidad: usize) -> Result<Objeto, String> {
         self.esperar('[')?;
         self.saltar_blancos();
         let mut vec = Vec::new();
@@ -308,7 +314,7 @@ impl<'a> JsonParser<'a> {
             return Ok(Objeto::Arreglo(vec));
         }
         loop {
-            let valor = self.parsear_valor()?;
+            let valor = self.parsear_valor(profundidad)?;
             vec.push(valor);
             self.saltar_blancos();
             if self.resto().starts_with(']') {
@@ -344,7 +350,7 @@ fn json_parse(args: Vec<Objeto>) -> Objeto {
     let recortado = &texto[inicio..];
 
     let mut parser = JsonParser::nuevo(recortado);
-    match parser.parsear_valor() {
+    match parser.parsear_valor(0) {
         Ok(valor) => valor,
         Err(e) => Objeto::Error(e),
     }

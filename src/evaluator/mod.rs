@@ -1219,6 +1219,23 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
 //
 // Retorno: Objeto — el elemento clonado, Nulo si no existe, o Error.
 fn evaluar_acceso_indice(estructura: Objeto, indice: Objeto) -> Objeto {
+    evaluar_acceso_indice_con_profundidad(estructura, indice, 0)
+}
+
+/// Implementación interna con guardián de profundidad para prevenir
+/// Stack Overflow por cadenas de prototipos cíclicas o demasiado largas.
+fn evaluar_acceso_indice_con_profundidad(
+    estructura: Objeto,
+    indice: Objeto,
+    profundidad: usize,
+) -> Objeto {
+    if profundidad > 64 {
+        return Objeto::Error(
+            "Stack Overflow preventivo: Cadena de prototipos \
+             demasiado profunda o cíclica"
+                .to_string(),
+        );
+    }
     match (estructura, indice) {
         // Acceso válido: Arreglo indexado por un entero.
         (Objeto::Arreglo(elementos), Objeto::Entero(i)) => {
@@ -1264,9 +1281,10 @@ fn evaluar_acceso_indice(estructura: Objeto, indice: Objeto) -> Objeto {
                         LlaveHash::Cadena("__proto__".to_string());
                     match mapa.get(&clave_proto) {
                         Some(Objeto::Diccionario(padre)) => {
-                            evaluar_acceso_indice(
+                            evaluar_acceso_indice_con_profundidad(
                                 Objeto::Diccionario(padre.clone()),
                                 indice,
+                                profundidad + 1,
                             )
                         }
                         _ => Objeto::Nulo,

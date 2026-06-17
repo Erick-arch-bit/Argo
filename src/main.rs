@@ -8,6 +8,7 @@
 mod lexer;
 mod ast;
 mod evaluator;
+mod stdlib;
 
 use std::io::{self, Write};
 use std::env;
@@ -189,7 +190,7 @@ fn generar_proyecto() {
     let toml = format!(
         "[proyecto]\n\
          nombre = \"{0}\"\n\
-         version = \"0.1.0\"\n\
+         version = \"1.0.0\"\n\
          autor = \"Desarrollador\"\n\
          entrada = \"src/main.argo\"\n",
         nombre
@@ -381,7 +382,7 @@ fn main() {
     match args.len() {
         // Sin argumentos → REPL interactivo
         1 => {
-            println!("Argo v0.1.0 - Interprete Nativo");
+            println!("Argo v1.0.0 - Interprete Nativo");
             println!("Escribe 'exit' para salir.\n");
             iniciar_repl();
         }
@@ -396,7 +397,7 @@ fn main() {
                 ejecutar_proyecto();
             }
             "repl" => {
-                println!("Argo v0.1.0 - Interprete Nativo");
+                println!("Argo v1.0.0 - Interprete Nativo");
                 println!("Escribe 'exit' para salir.\n");
                 iniciar_repl();
             }

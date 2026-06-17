@@ -56,6 +56,13 @@ pub enum Token {
     Or,             // ||
     Not,            // !
 
+    // --- Operadores a Nivel de Bits (Bitwise) ---
+    Ampersand,          // &
+    Pipe,               // |
+    Circunflejo,        // ^
+    DesplazamientoIzq,  // <<
+    DesplazamientoDer,  // >>
+
     // --- Símbolos y Estructuras ---
     Punto,               // .
     Coma,                // ,

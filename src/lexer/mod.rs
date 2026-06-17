@@ -117,6 +117,22 @@ impl<'a> Lexer<'a> {
                     self.avanzar();
                     return Token::Cadena(literal);
                 }
+                Some('\\') => {
+                    self.avanzar();
+                    match self.caracter_actual {
+                        Some('"')  => { literal.push('"');  self.avanzar(); }
+                        Some('\\') => { literal.push('\\'); self.avanzar(); }
+                        Some('n')  => { literal.push('\n'); self.avanzar(); }
+                        Some('r')  => { literal.push('\r'); self.avanzar(); }
+                        Some('t')  => { literal.push('\t'); self.avanzar(); }
+                        Some(c)    => {
+                            literal.push('\\');
+                            literal.push(c);
+                            self.avanzar();
+                        }
+                        None => return Token::Ilegal('"'),
+                    }
+                }
                 Some(c) => {
                     literal.push(c);
                     self.avanzar();
@@ -243,7 +259,10 @@ impl<'a> Iterator for Lexer<'a> {
                 }
             },
             '<' => {
-                if self.mirar_siguiente() == Some(&'=') {
+                if self.mirar_siguiente() == Some(&'<') {
+                    self.avanzar();
+                    Token::DesplazamientoIzq
+                } else if self.mirar_siguiente() == Some(&'=') {
                     self.avanzar();
                     Token::MenorOIgual
                 } else {
@@ -251,7 +270,10 @@ impl<'a> Iterator for Lexer<'a> {
                 }
             },
             '>' => {
-                if self.mirar_siguiente() == Some(&'=') {
+                if self.mirar_siguiente() == Some(&'>') {
+                    self.avanzar();
+                    Token::DesplazamientoDer
+                } else if self.mirar_siguiente() == Some(&'=') {
                     self.avanzar();
                     Token::MayorOIgual
                 } else {
@@ -260,6 +282,23 @@ impl<'a> Iterator for Lexer<'a> {
             },
             
             // Símbolos de un solo carácter
+            '&' => {
+                if self.mirar_siguiente() == Some(&'&') {
+                    self.avanzar();
+                    Token::And
+                } else {
+                    Token::Ampersand
+                }
+            },
+            '|' => {
+                if self.mirar_siguiente() == Some(&'|') {
+                    self.avanzar();
+                    Token::Or
+                } else {
+                    Token::Pipe
+                }
+            },
+            '^' => Token::Circunflejo,
             '*' => Token::Multiplicacion,
             '/' => {
                 if self.mirar_siguiente() == Some(&'/') {

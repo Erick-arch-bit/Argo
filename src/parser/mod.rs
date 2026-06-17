@@ -20,8 +20,12 @@ use crate::lexer::Lexer;
 #[allow(dead_code)]
 pub enum Precedencia {
     Menor,           // Límite base: entrada del bucle Pratt
+    BitOr,           // |
+    BitXor,          // ^
+    BitAnd,          // &
     Igualdad,        // ==  !=
     Comparacion,     // <  >  <=  >=
+    Shift,           // <<  >>
     Suma,            // +  -
     Multiplicacion,  // *  /  %
     Prefijo,         // !  - (unario) — reservado para futuros operadores
@@ -1744,13 +1748,23 @@ impl<'a> Parser<'a> {
     /// ascendente (definido en el enum `Precedencia`).
     fn precedencia_actual(&self) -> Precedencia {
         match &self.token_actual {
-            // Igualdad (precedencia más baja entre los operadores)
+            // Bitwise OR — precedencia más baja entre los operadores
+            Token::Pipe => Precedencia::BitOr,
+            // Bitwise XOR
+            Token::Circunflejo => Precedencia::BitXor,
+            // Bitwise AND
+            Token::Ampersand => Precedencia::BitAnd,
+            // Igualdad
             Token::Igual | Token::Diferente => Precedencia::Igualdad,
             // Comparación relacional
             Token::MenorQue
             | Token::MayorQue
             | Token::MenorOIgual
             | Token::MayorOIgual => Precedencia::Comparacion,
+            // Desplazamiento de bits
+            Token::DesplazamientoIzq | Token::DesplazamientoDer => {
+                Precedencia::Shift
+            }
             // Suma y resta
             Token::Suma | Token::Resta => Precedencia::Suma,
             // Multiplicación, división y módulo

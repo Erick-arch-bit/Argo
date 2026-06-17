@@ -12,7 +12,6 @@ pub use object::Objeto;
 pub use environment::Entorno;
 
 use std::collections::HashMap;
-use std::f64::consts;
 use std::fs;
 
 // ---------------------------------------------------------------------------
@@ -121,102 +120,8 @@ pub fn configurar_entorno_global() -> Entorno {
     entorno.asignar("push".to_string(), Objeto::Nativa(push_nativa));
     entorno.asignar("tipo".to_string(), Objeto::Nativa(tipo_nativa));
 
-    // -------------------------------------------------------------------
-    // math — Diccionario de funciones y constantes matemáticas
-    // -------------------------------------------------------------------
-    // Agrupa utilidades numéricas bajo el espacio de nombres `math`.
-    // El usuario accede con notación de punto: math.sin(3.14), math.PI.
-    //
-    // Cada función recibe un único argumento numérico (Entero o Flotante)
-    // y retorna Objeto::Flotante. El manejo de errores (aridad, tipo)
-    // se centraliza en la función extraer_f64 para evitar repetición.
-    {
-        // Helper interno: extrae un f64 de un Objeto numérico.
-        // Retorna Err(Objeto::Error) si la aridad es incorrecta o el
-        // tipo no es numérico, lo que permite propagar el error con ?.
-        fn extraer_f64(args: Vec<Objeto>) -> Result<f64, Objeto> {
-            if args.len() != 1 {
-                return Err(Objeto::Error(
-                    "Se esperaba 1 argumento numérico".to_string(),
-                ));
-            }
-            match &args[0] {
-                Objeto::Entero(v) => Ok(*v as f64),
-                Objeto::Flotante(v) => Ok(*v),
-                _ => Err(Objeto::Error(
-                    "Se esperaba un número (entero o flotante)".to_string(),
-                )),
-            }
-        }
-
-        // Closures matemáticos. Cada uno delega el parseo en
-        // extraer_f64 y aplica la función de std::f64.
-        let math_sin = |args: Vec<Objeto>| -> Objeto {
-            match extraer_f64(args) {
-                Ok(v) => Objeto::Flotante(v.sin()),
-                Err(e) => e,
-            }
-        };
-
-        let math_cos = |args: Vec<Objeto>| -> Objeto {
-            match extraer_f64(args) {
-                Ok(v) => Objeto::Flotante(v.cos()),
-                Err(e) => e,
-            }
-        };
-
-        let math_sqrt = |args: Vec<Objeto>| -> Objeto {
-            match extraer_f64(args) {
-                Ok(v) => Objeto::Flotante(v.sqrt()),
-                Err(e) => e,
-            }
-        };
-
-        let math_abs = |args: Vec<Objeto>| -> Objeto {
-            match extraer_f64(args) {
-                Ok(v) => Objeto::Flotante(v.abs()),
-                Err(e) => e,
-            }
-        };
-
-        // Construir el HashMap del diccionario math.
-        let mut mapa_math: HashMap<LlaveHash, Objeto> = HashMap::new();
-
-        // Funciones
-        mapa_math.insert(
-            LlaveHash::Cadena("sin".to_string()),
-            Objeto::Nativa(math_sin as fn(Vec<Objeto>) -> Objeto),
-        );
-        mapa_math.insert(
-            LlaveHash::Cadena("cos".to_string()),
-            Objeto::Nativa(math_cos as fn(Vec<Objeto>) -> Objeto),
-        );
-        mapa_math.insert(
-            LlaveHash::Cadena("sqrt".to_string()),
-            Objeto::Nativa(math_sqrt as fn(Vec<Objeto>) -> Objeto),
-        );
-        mapa_math.insert(
-            LlaveHash::Cadena("abs".to_string()),
-            Objeto::Nativa(math_abs as fn(Vec<Objeto>) -> Objeto),
-        );
-
-        // Constantes
-        mapa_math.insert(
-            LlaveHash::Cadena("PI".to_string()),
-            Objeto::Flotante(consts::PI),
-        );
-        mapa_math.insert(
-            LlaveHash::Cadena("E".to_string()),
-            Objeto::Flotante(consts::E),
-        );
-
-        // Envolver el mapa en un Objeto::Diccionario e inyectarlo
-        // en el entorno global. El usuario accede con math.sin(...),
-        // math.PI, etc. gracias al operador punto que se resuelve
-        // como acceso por índice (AccesoIndice).
-        let objeto_math = Objeto::Diccionario(mapa_math);
-        entorno.asignar("math".to_string(), objeto_math);
-    }
+    // Inyectar módulos de la biblioteca estándar (math, fs, net, json).
+    crate::stdlib::inyectar_stdlib(&mut entorno);
 
     entorno
 }
@@ -1125,6 +1030,14 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
             "==" => Objeto::Booleano(i == d),
             "!=" => Objeto::Booleano(i != d),
 
+            // Bitwise — operan sobre la representación binaria
+            // del entero con complemento a dos.
+            "&" => Objeto::Entero(i & d),
+            "|" => Objeto::Entero(i | d),
+            "^" => Objeto::Entero(i ^ d),
+            "<<" => Objeto::Entero(i << d),
+            ">>" => Objeto::Entero(i >> d),
+
             // Operador no soportado para Entero (ej. concatenar
             // enteros con "+" no, pero eso ya lo cubrimos arriba).
             // Cae aquí cualquier operador que no tenga sentido
@@ -1154,6 +1067,13 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
 
             "==" => Objeto::Booleano(i == d),
             "!=" => Objeto::Booleano(i != d),
+
+            // Bitwise: error explícito, los flotantes no tienen
+            // representación binaria para operaciones a nivel de bits.
+            "&" | "|" | "^" | "<<" | ">>" => Objeto::Error(
+                "Las operaciones a nivel de bits solo soportan números enteros"
+                    .to_string(),
+            ),
 
             _ => Objeto::Error(format!(
                 "Operación '{}' no soportada entre flotantes", operador
@@ -1333,11 +1253,25 @@ fn evaluar_acceso_indice(estructura: Objeto, indice: Objeto) -> Objeto {
             };
             // Buscar la clave en el HashMap. get() retorna Option<&Objeto>.
             // Si la clave existe, clonamos el valor y lo retornamos.
-            // Si no existe, retornamos Nulo (comportamiento similar a
-            // JavaScript: acceso a propiedad inexistente → undefined).
             match mapa.get(&llave) {
                 Some(valor) => valor.clone(),
-                None => Objeto::Nulo,
+                None => {
+                    // Delegación prototípica (Prototypal Inheritance):
+                    // si la clave no existe en este diccionario,
+                    // buscar __proto__ y recorrer la cadena de
+                    // prototipos recursivamente.
+                    let clave_proto =
+                        LlaveHash::Cadena("__proto__".to_string());
+                    match mapa.get(&clave_proto) {
+                        Some(Objeto::Diccionario(padre)) => {
+                            evaluar_acceso_indice(
+                                Objeto::Diccionario(padre.clone()),
+                                indice,
+                            )
+                        }
+                        _ => Objeto::Nulo,
+                    }
+                }
             }
         }
 
@@ -1464,6 +1398,12 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                 // como previsión para expansión futura.
                 Token::And => "&&",
                 Token::Or => "||",
+                // Bitwise
+                Token::Ampersand => "&",
+                Token::Pipe => "|",
+                Token::Circunflejo => "^",
+                Token::DesplazamientoIzq => "<<",
+                Token::DesplazamientoDer => ">>",
                 _ => return Objeto::Error(format!(
                     "Operador binario desconocido: {:?}", operador
                 )),

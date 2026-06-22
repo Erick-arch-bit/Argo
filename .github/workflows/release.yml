@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build ${{ matrix.binary_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary_name: argo-linux-amd64
+
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            binary_name: argo-darwin-arm64
+
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            binary_name: argo-darwin-amd64
+
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            binary_name: argo-windows-amd64.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Rename binary
+        run: |
+          cp target/${{ matrix.target }}/release/argo${{ matrix.os == 'windows-latest' && '.exe' || '' }} ${{ matrix.binary_name }}
+
+      - name: Generate SHA256 checksum (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          if command -v shasum &>/dev/null; then
+            shasum -a 256 ${{ matrix.binary_name }} > ${{ matrix.binary_name }}.sha256
+          else
+            sha256sum ${{ matrix.binary_name }} > ${{ matrix.binary_name }}.sha256
+          fi
+
+      - name: Generate SHA256 checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 ${{ matrix.binary_name }}).Hash.ToLower()
+          "$hash  ${{ matrix.binary_name }}" | Out-File -Encoding ASCII ${{ matrix.binary_name }}.sha256
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes 2>/dev/null || true
+          gh release upload "${{ github.ref_name }}" \
+            "${{ matrix.binary_name }}" \
+            "${{ matrix.binary_name }}.sha256" \
+            --clobber

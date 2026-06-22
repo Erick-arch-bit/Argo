@@ -4,15 +4,17 @@
 // con alcance anidado (Entorno), más las funciones que recorren el AST
 // y producen resultados.
 
+pub mod bytecode;
+pub mod modulo;
 pub mod object;
 pub mod environment;
 
+pub use modulo::importar;
 pub use object::LlaveHash;
 pub use object::Objeto;
 pub use environment::Entorno;
 
 use std::collections::HashMap;
-use std::fs;
 
 // ---------------------------------------------------------------------------
 // Importaciones del AST
@@ -24,8 +26,6 @@ use std::fs;
 // o mover el árbol, que puede ser grande.
 use crate::ast::{Expression, Programa, Statement};
 use crate::lexer::token::Token;
-use crate::lexer::Lexer;
-use crate::parser::Parser;
 
 // ---------------------------------------------------------------------------
 // configurar_entorno_global — Prepara el entorno con funciones nativas
@@ -91,6 +91,36 @@ pub fn configurar_entorno_global() -> Entorno {
         }
     };
 
+    let cast_entero = |args: Vec<Objeto>| -> Objeto {
+        if args.len() != 1 {
+            return Objeto::Error(
+                "Se esperaba 1 argumento para entero".to_string(),
+            );
+        }
+        match &args[0] {
+            Objeto::Cadena(s) => match s.parse::<i64>() {
+                Ok(n) => Objeto::Entero(n),
+                Err(_) => Objeto::Error(format!(
+                    "No se pudo convertir '{}' a entero", s
+                )),
+            },
+            Objeto::Entero(_) => args[0].clone(),
+            Objeto::Flotante(f) => Objeto::Entero(*f as i64),
+            _ => Objeto::Error(
+                "El argumento debe ser una cadena o número".to_string(),
+            ),
+        }
+    };
+
+    let cast_cadena = |args: Vec<Objeto>| -> Objeto {
+        if args.len() != 1 {
+            return Objeto::Error(
+                "Se esperaba 1 argumento para cadena".to_string(),
+            );
+        }
+        Objeto::Cadena(format!("{}", args[0]))
+    };
+
     let tipo_nativa = |args: Vec<Objeto>| -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
@@ -110,6 +140,7 @@ pub fn configurar_entorno_global() -> Entorno {
             Objeto::Funcion { .. } => "funcion",
             Objeto::Arreglo(_) => "arreglo",
             Objeto::Diccionario(_) => "diccionario",
+            Objeto::Buffer(_) => "buffer",
             Objeto::Break => "break",
         };
         Objeto::Cadena(nombre.to_string())
@@ -119,6 +150,8 @@ pub fn configurar_entorno_global() -> Entorno {
     entorno.asignar("len".to_string(), Objeto::Nativa(len_nativa));
     entorno.asignar("push".to_string(), Objeto::Nativa(push_nativa));
     entorno.asignar("tipo".to_string(), Objeto::Nativa(tipo_nativa));
+    entorno.asignar("entero".to_string(), Objeto::Nativa(cast_entero));
+    entorno.asignar("cadena".to_string(), Objeto::Nativa(cast_cadena));
 
     // Inyectar módulos de la biblioteca estándar (math, fs, net, json).
     crate::stdlib::inyectar_stdlib(&mut entorno);
@@ -861,6 +894,9 @@ fn es_truthy(objeto: &Objeto) -> bool {
         // Diccionario: vacío es falso, no vacío es verdadero.
         Objeto::Diccionario(m) => !m.is_empty(),
 
+        // Buffer: vacío es falso, no vacío es verdadero.
+        Objeto::Buffer(v) => !v.is_empty(),
+
         // Break: señal de control, no es un valor real. Se considera
         // falso (nunca debería llegar a es_truthy en condiciones normales,
         // porque el bucle lo intercepta antes).
@@ -1293,6 +1329,23 @@ fn evaluar_acceso_indice_con_profundidad(
             }
         }
 
+        // Acceso válido: Buffer indexado por un entero (solo lectura).
+        (Objeto::Buffer(bytes), Objeto::Entero(i)) => {
+            let len = bytes.len();
+            if i < 0 || (i as usize) >= len {
+                Objeto::Error(format!(
+                    "Índice fuera de rango: {} (longitud: {})", i, len
+                ))
+            } else {
+                Objeto::Entero(bytes[i as usize] as i64)
+            }
+        }
+        (Objeto::Buffer(_), _) => {
+            Objeto::Error(
+                "El índice debe ser un entero".to_string()
+            )
+        }
+
         // La estructura no soporta acceso por índice.
         (_, _) => {
             Objeto::Error(
@@ -1615,38 +1668,22 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
         }
 
         // Expression::Import(ruta) — Importación de módulo.
-        // Evalúa `import "archivo.argo"`: lee, parsea y ejecuta el
-        // archivo en un entorno aislado, retornando un diccionario
-        // con las variables globales del módulo.
+        // Evalúa `import "archivo.argo"`: resuelve el módulo (vía
+        // sistema de caché de dos niveles: .argbc binario → .argo
+        // textual → descarga para URLs), retornando el AST ya
+        // parseado/deserializado listo para ejecutar.
         Expression::Import(ruta) => {
-            // a. Intentar leer el archivo. Si falla (no existe,
-            //    permisos, etc.), retornar Objeto::Error.
-            let contenido = match fs::read_to_string(ruta) {
-                Ok(c) => c,
-                Err(_) => return Objeto::Error(format!(
-                    "No se pudo importar el archivo: {}", ruta
+            // a. Resolver y compilar el módulo. importar() maneja
+            //    todo el ciclo: caché binaria (.argbc), caché textual
+            //    (.argo), descarga (URLs), y parseo. Retorna
+            //    Vec<Statement> sin necesidad de Lexer ni Parser.
+            let sentencias = match importar(ruta) {
+                Ok(s) => s,
+                Err(e) => return Objeto::Error(format!(
+                    "No se pudo importar: {}", e
                 )),
             };
-
-            // b. Lexer + Parser para el contenido del módulo.
-            //    Se crean y dropean localmente; el AST generado
-            //    se evalúa inmediatamente y luego se descarta.
-            let lexer_modulo = Lexer::nuevo(&contenido);
-            let mut parser_modulo = Parser::nuevo(lexer_modulo);
-            let programa_modulo: Programa = parser_modulo.parsear_programa();
-
-            // c. Si el parser del módulo acumuló errores, agruparlos
-            //    en un único Objeto::Error (short-circuit).
-            if !parser_modulo.errores.is_empty() {
-                let mut msg = format!(
-                    "Error sintáctico al importar '{}'", ruta
-                );
-                for err in &parser_modulo.errores {
-                    msg.push_str("\n  ");
-                    msg.push_str(err);
-                }
-                return Objeto::Error(msg);
-            }
+            let programa_modulo = Programa { sentencias };
 
             // d. Crear un entorno global NUEVO y AISLADO para el
             //    módulo. El módulo NO hereda las variables del

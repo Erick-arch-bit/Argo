@@ -5,10 +5,16 @@
 // nombre de espacio (math, fs, net, json).
 //
 
+pub mod arr;
+pub mod buffer;
 pub mod fs;
 pub mod json;
 pub mod math;
 pub mod net;
+pub mod os;
+pub mod str;
+pub mod thread;
+pub mod time;
 
 use crate::evaluator::Entorno;
 
@@ -19,4 +25,10 @@ pub fn inyectar_stdlib(entorno: &mut Entorno) {
     entorno.asignar("fs".to_string(), fs::crear_modulo());
     entorno.asignar("net".to_string(), net::crear_modulo());
     entorno.asignar("json".to_string(), json::crear_modulo());
+    entorno.asignar("time".to_string(), time::crear_modulo());
+    entorno.asignar("os".to_string(), os::crear_modulo());
+    entorno.asignar("str".to_string(), str::crear_modulo());
+    entorno.asignar("arr".to_string(), arr::crear_modulo());
+    entorno.asignar("buffer".to_string(), buffer::crear_modulo());
+    entorno.asignar("thread".to_string(), thread::crear_modulo());
 }

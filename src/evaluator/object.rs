@@ -155,6 +155,13 @@ pub enum Objeto {
     // Para diccionarios grandes, el costo de clonación puede ser alto.
     Diccionario(HashMap<LlaveHash, Objeto>),
 
+    // Buffer(Vec<u8>) — Representa una región de memoria binaria contigua
+    // (arreglo de bytes). Vec<u8> aloca su contenido en el heap. Permite
+    // manipular datos binarios directamente: leer, escribir y transferir
+    // bytes sin codificación de cadena. El acceso de solo lectura por índice
+    // está soportado nativamente (evaluar_acceso_indice).
+    Buffer(Vec<u8>),
+
     // Funcion { parametros, cuerpo, entorno } — Valor de función
     // definida por el usuario (cierre léxico / closure).
     //
@@ -215,6 +222,7 @@ impl Objeto {
             Objeto::Funcion { .. } | Objeto::Nativa(_) => {
                 Err("Las claves de diccionario no pueden ser funciones".to_string())
             }
+            Objeto::Buffer(_) => Err("Las claves de diccionario no pueden ser buffers".to_string()),
             Objeto::Nulo => Err("Las claves de diccionario no pueden ser nulo".to_string()),
             Objeto::Retorno(_) => Err("Las claves de diccionario no pueden ser retornos".to_string()),
             Objeto::Break => Err("Las claves de diccionario no pueden ser break".to_string()),
@@ -316,6 +324,15 @@ impl fmt::Display for Objeto {
                     .map(|(k, v)| format!("{}: {}", k, v))
                     .collect();
                 write!(f, "{{{}}}", strs.join(", "))
+            }
+
+            // Buffer: muestra un resumen con la longitud en bytes.
+            // No se imprime el contenido completo porque podría ser
+            // binario (no UTF-8) y muy largo. Se accede al Vec<u8>
+            // por referencia (&Vec<u8>). La longitud se obtiene con
+            // .len() sin consumir ni clonar el Vec.
+            Objeto::Buffer(bytes) => {
+                write!(f, "<Buffer {} bytes>", bytes.len())
             }
 
             // Funcion: mostrar un resumen informativo. No se imprime

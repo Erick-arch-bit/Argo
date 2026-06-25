@@ -326,8 +326,8 @@ impl<'a> JsonParser<'a> {
     }
 }
 
-/// Función nativa: json.parse(cadena) → Objeto
-fn json_parse(args: Vec<Objeto>) -> Objeto {
+/// Función nativa: json.parsear(cadena) → Objeto
+fn json_parsear(args: Vec<Objeto>) -> Objeto {
     if args.len() != 1 {
         return Objeto::Error(
             "Se esperaba 1 argumento (cadena JSON)".to_string(),
@@ -345,7 +345,7 @@ fn json_parse(args: Vec<Objeto>) -> Objeto {
     // Truco para HTTP: buscar el primer '{' o '[' para descartar
     // cabeceras HTTP que pudieran preceder al JSON.
     let inicio = texto
-        .find(|c| c == '{' || c == '[')
+        .find(['{', '['])
         .unwrap_or(0);
     let recortado = &texto[inicio..];
 
@@ -356,8 +356,8 @@ fn json_parse(args: Vec<Objeto>) -> Objeto {
     }
 }
 
-/// Función nativa: json.stringify(objeto) → Objeto::Cadena
-fn json_stringify(args: Vec<Objeto>) -> Objeto {
+/// Función nativa: json.stringificar(objeto) → Objeto::Cadena
+fn json_stringificar(args: Vec<Objeto>) -> Objeto {
     if args.len() != 1 {
         return Objeto::Error(
             "Se esperaba 1 argumento".to_string(),
@@ -372,12 +372,12 @@ pub fn crear_modulo() -> Objeto {
     let mut mapa_json: HashMap<LlaveHash, Objeto> = HashMap::new();
 
     mapa_json.insert(
-        LlaveHash::Cadena("parse".to_string()),
-        Objeto::Nativa(json_parse as fn(Vec<Objeto>) -> Objeto),
+        LlaveHash::Cadena("parsear".to_string()),
+        Objeto::Nativa(json_parsear as fn(Vec<Objeto>) -> Objeto),
     );
     mapa_json.insert(
-        LlaveHash::Cadena("stringify".to_string()),
-        Objeto::Nativa(json_stringify as fn(Vec<Objeto>) -> Objeto),
+        LlaveHash::Cadena("stringificar".to_string()),
+        Objeto::Nativa(json_stringificar as fn(Vec<Objeto>) -> Objeto),
     );
 
     Objeto::Diccionario(mapa_json)

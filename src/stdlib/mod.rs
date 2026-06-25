@@ -8,6 +8,7 @@
 pub mod arr;
 pub mod buffer;
 pub mod fs;
+pub mod gpu;
 pub mod json;
 pub mod math;
 pub mod net;
@@ -31,4 +32,5 @@ pub fn inyectar_stdlib(entorno: &mut Entorno) {
     entorno.asignar("arr".to_string(), arr::crear_modulo());
     entorno.asignar("buffer".to_string(), buffer::crear_modulo());
     entorno.asignar("thread".to_string(), thread::crear_modulo());
+    entorno.asignar("gpu".to_string(), gpu::crear_modulo());
 }

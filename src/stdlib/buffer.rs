@@ -1,13 +1,8 @@
-//
-// Módulo estándar buffer — Manipulación de memoria binaria contigua.
-// Expone alloc, write y read en un Objeto::Diccionario bajo "buffer".
-//
-
 use std::collections::HashMap;
 
 use crate::evaluator::{LlaveHash, Objeto};
 
-const MAX_BUFFER_SIZE: usize = 1 << 30; // 1 GB
+const MAX_BUFFER_SIZE: usize = 1 << 30;
 
 fn tipo_objeto(o: &Objeto) -> &'static str {
     match o {
@@ -22,6 +17,7 @@ fn tipo_objeto(o: &Objeto) -> &'static str {
         Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
         Objeto::Retorno(_) => "retorno",
         Objeto::Break => "break",
+        Objeto::Continue => "continue",
         Objeto::Error(_) => "error",
     }
 }
@@ -56,8 +52,6 @@ fn extraer_buffer(args: &[Objeto], idx: usize) -> Result<&Vec<u8>, Objeto> {
 }
 
 pub fn crear_modulo() -> Objeto {
-    // Asigna un buffer de `tamano` bytes inicializado en cero.
-    // Recibe 1 argumento: Objeto::Entero(tamano).
     fn buffer_alloc(args: Vec<Objeto>) -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(format!(
@@ -85,11 +79,6 @@ pub fn crear_modulo() -> Objeto {
         Objeto::Buffer(vec![0; tamano_usize])
     }
 
-    // Escribe un byte en una posición del buffer.
-    // Retorna un NUEVO buffer (clon + mutación) para mantener
-    // la seguridad funcional (inmutabilidad de datos en Argo).
-    // Recibe 3 argumentos: Objeto::Buffer, Objeto::Entero(indice),
-    // Objeto::Entero(valor_byte).
     fn buffer_write(args: Vec<Objeto>) -> Objeto {
         if args.len() != 3 {
             return Objeto::Error(format!(
@@ -117,7 +106,7 @@ pub fn crear_modulo() -> Objeto {
                 indice, len
             ));
         }
-        if valor < 0 || valor > 255 {
+        if !(0..=255).contains(&valor) {
             return Objeto::Error(format!(
                 "buffer.write: el valor debe estar entre 0 y 255, se recibió {}",
                 valor
@@ -128,8 +117,6 @@ pub fn crear_modulo() -> Objeto {
         Objeto::Buffer(nuevo)
     }
 
-    // Lee un byte en una posición del buffer.
-    // Recibe 2 argumentos: Objeto::Buffer, Objeto::Entero(indice).
     fn buffer_read(args: Vec<Objeto>) -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(format!(
@@ -146,28 +133,104 @@ pub fn crear_modulo() -> Objeto {
             Err(e) => return e,
         };
 
-        let len = bytes.len();
-        if indice < 0 || (indice as usize) >= len {
+        if indice < 0 || (indice as usize) >= bytes.len() {
             return Objeto::Error(format!(
                 "buffer.read: índice {} fuera de rango (longitud del buffer: {})",
-                indice, len
+                indice, bytes.len()
             ));
         }
         Objeto::Entero(bytes[indice as usize] as i64)
     }
 
+    fn buffer_longitud(args: Vec<Objeto>) -> Objeto {
+        if args.len() != 1 {
+            return Objeto::Error(format!(
+                "buffer.longitud: se esperaba 1 argumento (buffer), se recibieron {}",
+                args.len()
+            ));
+        }
+        let bytes = match extraer_buffer(&args, 0) {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+        Objeto::Entero(bytes.len() as i64)
+    }
+
+    fn buffer_a_cadena(args: Vec<Objeto>) -> Objeto {
+        if args.len() != 1 {
+            return Objeto::Error(format!(
+                "buffer.a_cadena: se esperaba 1 argumento (buffer), se recibieron {}",
+                args.len()
+            ));
+        }
+        let bytes = match extraer_buffer(&args, 0) {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+        Objeto::Cadena(String::from_utf8_lossy(bytes).to_string())
+    }
+
+    fn buffer_de_cadena(args: Vec<Objeto>) -> Objeto {
+        if args.len() != 1 {
+            return Objeto::Error(format!(
+                "buffer.de_cadena: se esperaba 1 argumento (cadena), se recibieron {}",
+                args.len()
+            ));
+        }
+        let cadena = match &args[0] {
+            Objeto::Cadena(c) => c,
+            other => return Objeto::Error(format!(
+                "buffer.de_cadena: se esperaba una cadena, se recibió {}",
+                tipo_objeto(other)
+            )),
+        };
+        Objeto::Buffer(cadena.as_bytes().to_vec())
+    }
+
+    fn buffer_copiar(args: Vec<Objeto>) -> Objeto {
+        if args.len() != 3 {
+            return Objeto::Error(format!(
+                "buffer.copiar: se esperaban 3 argumentos (origen, destino, posicion), se recibieron {}",
+                args.len()
+            ));
+        }
+        let origen = match extraer_buffer(&args, 0) {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+        let destino = match args.get(1) {
+            Some(Objeto::Buffer(v)) => v.clone(),
+            Some(other) => return Objeto::Error(format!(
+                "buffer.copiar: el segundo argumento debe ser un buffer, se recibió {}",
+                tipo_objeto(other)
+            )),
+            None => return Objeto::Error("buffer.copiar: falta el argumento destino".to_string()),
+        };
+        let posicion = match extraer_entero(&args, 2, "posicion") {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+        if posicion < 0 || (posicion as usize) > destino.len() {
+            return Objeto::Error(format!(
+                "buffer.copiar: posición {} fuera de rango (longitud del destino: {})",
+                posicion, destino.len()
+            ));
+        }
+        let espacio = destino.len() - posicion as usize;
+        let a_copiar = origen.len().min(espacio);
+        let mut nuevo = destino;
+        nuevo[posicion as usize..posicion as usize + a_copiar]
+            .copy_from_slice(&origen[..a_copiar]);
+        Objeto::Buffer(nuevo)
+    }
+
     let mut mapa: HashMap<LlaveHash, Objeto> = HashMap::new();
-    mapa.insert(
-        LlaveHash::Cadena("alloc".to_string()),
-        Objeto::Nativa(buffer_alloc as fn(Vec<Objeto>) -> Objeto),
-    );
-    mapa.insert(
-        LlaveHash::Cadena("write".to_string()),
-        Objeto::Nativa(buffer_write as fn(Vec<Objeto>) -> Objeto),
-    );
-    mapa.insert(
-        LlaveHash::Cadena("read".to_string()),
-        Objeto::Nativa(buffer_read as fn(Vec<Objeto>) -> Objeto),
-    );
+    mapa.insert(LlaveHash::Cadena("alloc".to_string()), Objeto::Nativa(buffer_alloc as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("write".to_string()), Objeto::Nativa(buffer_write as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("read".to_string()), Objeto::Nativa(buffer_read as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("longitud".to_string()), Objeto::Nativa(buffer_longitud as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("a_cadena".to_string()), Objeto::Nativa(buffer_a_cadena as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("de_cadena".to_string()), Objeto::Nativa(buffer_de_cadena as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("copiar".to_string()), Objeto::Nativa(buffer_copiar as fn(Vec<Objeto>) -> Objeto));
     Objeto::Diccionario(mapa)
 }

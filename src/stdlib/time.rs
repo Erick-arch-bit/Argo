@@ -1,21 +1,11 @@
-//
-// Módulo estándar time — Control de flujo temporal.
-// Expone now (milisegundos desde UNIX Epoch) y sleep
-// (pausa en milisegundos) en un Objeto::Diccionario
-// bajo el nombre "time".
-//
-
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::thread;
 
 use crate::evaluator::{LlaveHash, Objeto};
 
-/// Ensambla y retorna un Objeto::Diccionario con las funciones
-/// de control temporal.
 pub fn crear_modulo() -> Objeto {
-    // Retorna los milisegundos transcurridos desde el UNIX Epoch.
-    fn time_now(args: Vec<Objeto>) -> Objeto {
+    fn time_ahora(args: Vec<Objeto>) -> Objeto {
         if !args.is_empty() {
             return Objeto::Error(
                 "La función now no recibe argumentos".to_string(),
@@ -29,9 +19,7 @@ pub fn crear_modulo() -> Objeto {
         }
     }
 
-    // Pausa la ejecución durante la cantidad de milisegundos
-    // especificada. Recibe 1 argumento numérico.
-    fn time_sleep(args: Vec<Objeto>) -> Objeto {
+    fn time_dormir(args: Vec<Objeto>) -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (milisegundos)".to_string(),
@@ -55,16 +43,40 @@ pub fn crear_modulo() -> Objeto {
         Objeto::Nulo
     }
 
+    fn time_segundos(args: Vec<Objeto>) -> Objeto {
+        if !args.is_empty() {
+            return Objeto::Error(
+                "time.segundos no recibe argumentos".to_string(),
+            );
+        }
+        match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(d) => Objeto::Entero(d.as_secs() as i64),
+            Err(e) => Objeto::Error(format!(
+                "Error al obtener el tiempo: {}", e
+            )),
+        }
+    }
+
+    fn time_micros(args: Vec<Objeto>) -> Objeto {
+        if !args.is_empty() {
+            return Objeto::Error(
+                "time.micros no recibe argumentos".to_string(),
+            );
+        }
+        match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(d) => Objeto::Entero(d.as_micros() as i64),
+            Err(e) => Objeto::Error(format!(
+                "Error al obtener el tiempo: {}", e
+            )),
+        }
+    }
+
     let mut mapa: HashMap<LlaveHash, Objeto> = HashMap::new();
 
-    mapa.insert(
-        LlaveHash::Cadena("now".to_string()),
-        Objeto::Nativa(time_now as fn(Vec<Objeto>) -> Objeto),
-    );
-    mapa.insert(
-        LlaveHash::Cadena("sleep".to_string()),
-        Objeto::Nativa(time_sleep as fn(Vec<Objeto>) -> Objeto),
-    );
+    mapa.insert(LlaveHash::Cadena("ahora".to_string()), Objeto::Nativa(time_ahora as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("dormir".to_string()), Objeto::Nativa(time_dormir as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("segundos".to_string()), Objeto::Nativa(time_segundos as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("micros".to_string()), Objeto::Nativa(time_micros as fn(Vec<Objeto>) -> Objeto));
 
     Objeto::Diccionario(mapa)
 }

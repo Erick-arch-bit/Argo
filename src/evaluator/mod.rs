@@ -142,6 +142,7 @@ pub fn configurar_entorno_global() -> Entorno {
             Objeto::Diccionario(_) => "diccionario",
             Objeto::Buffer(_) => "buffer",
             Objeto::Break => "break",
+            Objeto::Continue => "continue",
         };
         Objeto::Cadena(nombre.to_string())
     };
@@ -203,14 +204,11 @@ pub fn evaluar_programa(programa: &Programa, entorno: &mut Entorno) -> Objeto {
         // las variantes sin mover el Objeto. Si hiciera `match resultado`,
         // la ownership se transferiría al match y no podríamos retornarlo.
         match &resultado {
-            // Objeto::Error(_) y Objeto::Retorno(_) son las únicas
-            // variantes que interrumpen el flujo normal. En ambos casos
-            // rompemos el bucle con `break`. El Objeto retenido en
-            // `resultado` se retorna al llamante al salir del bucle.
+            // Objeto::Error(_) y Objeto::Retorno(_) interrumpen el flujo.
             Objeto::Error(_) | Objeto::Retorno(_) => break,
-            // Cualquier otro valor (Entero, Flotante, Booleano, Cadena,
-            // Nulo) es un resultado normal. El bucle continúa con la
-            // siguiente sentencia. No necesitamos hacer nada aquí.
+            // Break y Continue se consumen (no se propagan al programa).
+            Objeto::Break | Objeto::Continue => break,
+            // Cualquier otro valor es un resultado normal.
             _ => {}
         }
     }
@@ -318,6 +316,8 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
                     }
                     // Break: detener el bucle sin propagar la señal.
                     Objeto::Break => break,
+                    // Continue: saltar a la actualización y siguiente iteración.
+                    Objeto::Continue => {}
                     _ => {}
                 }
 
@@ -340,6 +340,10 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
         // Retorna Objeto::Break que el bucle for/while intercepta
         // y consume al salir.
         Statement::Break => Objeto::Break,
+
+        // Statement::Continue — Señal de salto a siguiente iteración.
+        // Retorna Objeto::Continue que el bucle for/while intercepta.
+        Statement::Continue => Objeto::Continue,
 
         // Statement::TryCatch { bloque_try, parametro_catch, bloque_catch } —
         // Manejo de excepciones: `try { ... } catch (e) { ... }`.
@@ -401,40 +405,18 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
             }
         }
 
-        // Statement::DeclaracionVariable { nombre, valor } —
-        // Declaración de variable: `let x = <expr>;`.
+        // Statement::DeclaracionVariable { nombre, valor, constante } —
+        // Declaración de variable: `let x = <expr>;` o `const x = <expr>;`.
         // 1. Evalúa la expresión de inicialización.
         // 2. Si el resultado es Error, lo propaga inmediatamente
         //    (short-circuit: no se asigna nada al entorno).
         // 3. Si es válido, asigna la variable en el entorno actual
         //    mediante `entorno.asignar()`.
-        // 4. Las declaraciones `let` retornan Nulo (no producen valor).
-        //
-        // Nota: El AST actual no incluye el campo `constante: bool`.
-        //       En una fase futura se añadirá para soportar `const`.
-        Statement::DeclaracionVariable { nombre, valor } => {
-            // evaluar_expresion recibe &Expression (prestado del AST)
-            // y &mut Entorno. Retorna un Objeto por ownership (move).
+        // 4. Las declaraciones `let`/`const` retornan Nulo.
+        Statement::DeclaracionVariable { nombre, valor, constante } => {
             let resultado = evaluar_expresion(valor, entorno);
-
-            // match por referencia para inspeccionar sin mover.
-            // Si es Error, retornamos inmediatamente para propagar
-            // el error al llamante. Esto evita asignar un valor
-            // inválido al entorno.
             if let Objeto::Error(_) = &resultado { return resultado }
-
-            // entorno.asignar() toma ownership del String (nombre)
-            // y del Objeto (resultado). El nombre del AST está
-            // prestado como &String; necesitamos .clone() para
-            // obtener una copia con ownership propio. clone() aloca
-            // en heap una copia del contenido textual del nombre.
-            // La alternativa (mover el String fuera del AST) está
-            // prohibida por el borrow checker: el AST es &Statement,
-            // no podemos tomar ownership de ningún campo.
-            entorno.asignar(nombre.clone(), resultado);
-
-            // Las declaraciones de variable no producen un valor
-            // evaluable; retornan Nulo (como `undefined` en JS).
+            entorno.declarar(nombre.clone(), resultado, *constante);
             Objeto::Nulo
         }
 
@@ -525,29 +507,30 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
 // ---------------------------------------------------------------------------
 // evaluar_bloque — Evalúa un bloque de código delimitado por { }
 // ---------------------------------------------------------------------------
-// Evalúa las sentencias del bloque directamente sobre el entorno recibido.
-// NO crea un sub-ámbito: las declaraciones `let` dentro del bloque
-// modifican el HashMap del entorno padre (como Python o JavaScript con
-// var). Esto es necesario para que la reasignación (`actualizar`) dentro
-// de bloques de while/if modifique la variable original y no una copia
-// clonada. El costo es que no hay aislamiento de ámbito local, pero
-// simplifica enormemente la implementación de mutabilidad.
+// Crea un sub-ámbito para las declaraciones `let`/`const` dentro del
+// bloque. Las variables declaradas dentro del bloque se aíslan del
+// ámbito exterior (scope léxico estándar). La reasignación (`actualizar`)
+// recorre la cadena de ámbitos hacia arriba, por lo que modificar una
+// variable del padre desde dentro del bloque funciona correctamente.
 //
 // Parámetros:
 //   sentencias: &[Statement] — slice de sentencias del bloque.
-//   entorno: &mut Entorno — entorno del ámbito padre. Las variables
-//     declaradas dentro del bloque se almacenan aquí directamente.
+//   entorno: &mut Entorno — entorno del ámbito padre.
 //
 // Retorno: Objeto — el resultado de la última sentencia, o Nulo si el
 //   bloque está vacío, o Error/Retorno si se propagan.
 fn evaluar_bloque(sentencias: &[Statement], entorno: &mut Entorno) -> Objeto {
+    if sentencias.is_empty() {
+        return Objeto::Nulo;
+    }
+    let mut entorno_bloque = Entorno::nuevo_local(entorno.clone());
     let mut resultado = Objeto::Nulo;
 
     for sentencia in sentencias {
-        resultado = evaluar_sentencia(sentencia, entorno);
+        resultado = evaluar_sentencia(sentencia, &mut entorno_bloque);
 
         match &resultado {
-            Objeto::Error(_) | Objeto::Retorno(_) => break,
+            Objeto::Error(_) | Objeto::Retorno(_) | Objeto::Break | Objeto::Continue => break,
             _ => {}
         }
     }
@@ -745,6 +728,9 @@ fn evaluar_sentencia_while(
             // Break: señala que el cuerpo ejecutó break; detener el
             // bucle y retornar Nulo (no propagar el Break al exterior).
             Objeto::Break => break,
+            // Continue: continuar con la siguiente iteración
+            // (re-evaluar la condición).
+            Objeto::Continue => {}
             _ => {}
         }
 
@@ -901,6 +887,10 @@ fn es_truthy(objeto: &Objeto) -> bool {
         // falso (nunca debería llegar a es_truthy en condiciones normales,
         // porque el bucle lo intercepta antes).
         Objeto::Break => false,
+
+        // Continue: señal de control de salto de iteración. No es un
+        // valor real, se intercepta en el bucle antes de es_truthy.
+        Objeto::Continue => false,
 
         // Error: cualquier error se considera falso (no se puede
         // "negar" un error de forma significativa).
@@ -1441,10 +1431,25 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             let eval_izquierda = evaluar_expresion(izquierda, entorno);
             if let Objeto::Error(_) = &eval_izquierda { return eval_izquierda }
 
+            // Short-circuit para && y ||: evaluar derecho solo si es necesario.
+            if *operador == Token::And {
+                if !es_truthy(&eval_izquierda) {
+                    return eval_izquierda;
+                }
+                let eval_derecha = evaluar_expresion(derecha, entorno);
+                if let Objeto::Error(_) = &eval_derecha { return eval_derecha }
+                return eval_derecha;
+            }
+            if *operador == Token::Or {
+                if es_truthy(&eval_izquierda) {
+                    return eval_izquierda;
+                }
+                let eval_derecha = evaluar_expresion(derecha, entorno);
+                if let Objeto::Error(_) = &eval_derecha { return eval_derecha }
+                return eval_derecha;
+            }
+
             // 2. Evaluar el lado derecho. Si es Error, propagar.
-            //    NOTA: evaluamos ambos lados secuencialmente. En un
-            //    lenguaje con short-circuit lógico (&&, ||), este orden
-            //    importa. Por ahora Argo no soporta esos operadores.
             let eval_derecha = evaluar_expresion(derecha, entorno);
             if let Objeto::Error(_) = &eval_derecha { return eval_derecha }
 
@@ -1557,7 +1562,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             //    &Expression. Los resultados se acumulan en un Vec<Objeto>
             //    que crece en heap dinámicamente. Si algún argumento
             //    falla, se propaga inmediatamente.
-            let mut argumentos_evaluados: Vec<Objeto> = Vec::new();
+            let mut argumentos_evaluados: Vec<Objeto> = Vec::with_capacity(argumentos.len());
             for arg in argumentos {
                 let eval_arg = evaluar_expresion(arg, entorno);
 
@@ -1582,7 +1587,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
         Expression::Arreglo(elementos) => {
             // Vec<Objeto> que crece en heap. Cada elemento evaluado se
             // mueve (ownership) dentro del vector.
-            let mut elementos_evaluados: Vec<Objeto> = Vec::new();
+            let mut elementos_evaluados: Vec<Objeto> = Vec::with_capacity(elementos.len());
             for expr in elementos {
                 let eval = evaluar_expresion(expr, entorno);
                 // Short-circuit: si un elemento es Error, toda la
@@ -1605,14 +1610,14 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
         Expression::Diccionario(pares) => {
             // HashMap<LlaveHash, Objeto> que crece dinámicamente en heap.
             // La capacidad inicial se deja por defecto (HashMap::new()).
-            let mut mapa: HashMap<LlaveHash, Objeto> = HashMap::new();
+            let mut mapa: HashMap<LlaveHash, Objeto> = HashMap::with_capacity(pares.len());
             for (clave_expr, valor_expr) in pares {
                 // 1. Evaluar la expresión de la clave.
                 let clave_eval = evaluar_expresion(clave_expr, entorno);
                 if let Objeto::Error(_) = &clave_eval { return clave_eval }
 
                 // 2. Convertir a LlaveHash. Si falla, propagar error.
-                let llave = match clave_eval.obtener_llave_hash() {
+                let llave = match clave_eval.tomar_llave_hash() {
                     Ok(k) => k,
                     Err(msg) => return Objeto::Error(msg),
                 };
@@ -1715,7 +1720,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             //    para que no contaminen el espacio de nombres del módulo.
             //    Solo las variables explícitamente declaradas con `let`
             //    en el módulo se exportan al llamante.
-            let nativas: [&str; 4] = ["print", "len", "push", "tipo"];
+            let nativas: [&str; 6] = ["print", "len", "push", "tipo", "entero", "cadena"];
             let mapa_modulo: HashMap<LlaveHash, Objeto> = entorno_modulo
                 .exportar()
                 .into_iter()

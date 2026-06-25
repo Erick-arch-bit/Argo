@@ -1,21 +1,9 @@
-//
-// Módulo estándar net — Conexiones de red vía TCP crudo.
-// Soporta los verbos HTTP GET, POST, PUT, PATCH, DELETE
-// mediante una función helper interna que construye y
-// envía la petición, luego lee la respuesta completa.
-//
-
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
 use crate::evaluator::{LlaveHash, Objeto};
 
-// ---------------------------------------------------------------------------
-// Helper interno — Envía una petición HTTP y retorna la respuesta cruda.
-// ---------------------------------------------------------------------------
-// Conecta al host:puerto, construye el mensaje HTTP con el método y
-// cuerpo opcional, escribe al stream y lee la respuesta completa.
 fn enviar_peticion_tcp(
     metodo: &str,
     host_puerto: &str,
@@ -57,161 +45,56 @@ fn enviar_peticion_tcp(
     Ok(respuesta)
 }
 
-// ---------------------------------------------------------------------------
-// Funciones nativas expuestas al interprete Argo
-// ---------------------------------------------------------------------------
-
-fn net_get(args: Vec<Objeto>) -> Objeto {
-    if args.len() != 1 {
+fn net_solicitud(args: Vec<Objeto>) -> Objeto {
+    if args.len() < 2 || args.len() > 3 {
         return Objeto::Error(
-            "Se esperaba 1 argumento (host:puerto)".to_string(),
+            "Se esperaban 2 o 3 argumentos (metodo, host:puerto, cuerpo?)".to_string(),
         );
     }
-    let host_puerto = match &args[0] {
-        Objeto::Cadena(hp) => hp.clone(),
+    let metodo = match &args[0] {
+        Objeto::Cadena(m) => m.to_uppercase(),
         _ => {
             return Objeto::Error(
-                "El argumento debe ser una cadena (host:puerto)".to_string(),
+                "El primer argumento debe ser una cadena (método HTTP)".to_string(),
             );
         }
     };
-    match enviar_peticion_tcp("GET", &host_puerto, None) {
+    let host_puerto = match &args[1] {
+        Objeto::Cadena(hp) => hp.clone(),
+        _ => {
+            return Objeto::Error(
+                "El segundo argumento debe ser una cadena (host:puerto)".to_string(),
+            );
+        }
+    };
+    if metodo != "GET" && metodo != "POST" && metodo != "PUT" && metodo != "PATCH" && metodo != "DELETE" {
+        return Objeto::Error(format!(
+            "Método HTTP no soportado: '{}'. Use GET, POST, PUT, PATCH o DELETE", metodo
+        ));
+    }
+    let cuerpo = if args.len() == 3 {
+        match &args[2] {
+            Objeto::Cadena(c) => Some(c.clone()),
+            _ => {
+                return Objeto::Error(
+                    "El tercer argumento debe ser una cadena (cuerpo)".to_string(),
+                );
+            }
+        }
+    } else {
+        None
+    };
+    match enviar_peticion_tcp(&metodo, &host_puerto, cuerpo.as_deref()) {
         Ok(r) => Objeto::Cadena(r),
         Err(e) => Objeto::Error(e),
     }
 }
 
-fn net_delete(args: Vec<Objeto>) -> Objeto {
-    if args.len() != 1 {
-        return Objeto::Error(
-            "Se esperaba 1 argumento (host:puerto)".to_string(),
-        );
-    }
-    let host_puerto = match &args[0] {
-        Objeto::Cadena(hp) => hp.clone(),
-        _ => {
-            return Objeto::Error(
-                "El argumento debe ser una cadena (host:puerto)".to_string(),
-            );
-        }
-    };
-    match enviar_peticion_tcp("DELETE", &host_puerto, None) {
-        Ok(r) => Objeto::Cadena(r),
-        Err(e) => Objeto::Error(e),
-    }
-}
-
-fn net_post(args: Vec<Objeto>) -> Objeto {
-    if args.len() != 2 {
-        return Objeto::Error(
-            "Se esperaban 2 argumentos (host:puerto, cuerpo)".to_string(),
-        );
-    }
-    let host_puerto = match &args[0] {
-        Objeto::Cadena(hp) => hp.clone(),
-        _ => {
-            return Objeto::Error(
-                "El primer argumento debe ser una cadena (host:puerto)"
-                    .to_string(),
-            );
-        }
-    };
-    let cuerpo = match &args[1] {
-        Objeto::Cadena(c) => c.clone(),
-        _ => {
-            return Objeto::Error(
-                "El segundo argumento debe ser una cadena (cuerpo)".to_string(),
-            );
-        }
-    };
-    match enviar_peticion_tcp("POST", &host_puerto, Some(&cuerpo)) {
-        Ok(r) => Objeto::Cadena(r),
-        Err(e) => Objeto::Error(e),
-    }
-}
-
-fn net_put(args: Vec<Objeto>) -> Objeto {
-    if args.len() != 2 {
-        return Objeto::Error(
-            "Se esperaban 2 argumentos (host:puerto, cuerpo)".to_string(),
-        );
-    }
-    let host_puerto = match &args[0] {
-        Objeto::Cadena(hp) => hp.clone(),
-        _ => {
-            return Objeto::Error(
-                "El primer argumento debe ser una cadena (host:puerto)"
-                    .to_string(),
-            );
-        }
-    };
-    let cuerpo = match &args[1] {
-        Objeto::Cadena(c) => c.clone(),
-        _ => {
-            return Objeto::Error(
-                "El segundo argumento debe ser una cadena (cuerpo)".to_string(),
-            );
-        }
-    };
-    match enviar_peticion_tcp("PUT", &host_puerto, Some(&cuerpo)) {
-        Ok(r) => Objeto::Cadena(r),
-        Err(e) => Objeto::Error(e),
-    }
-}
-
-fn net_patch(args: Vec<Objeto>) -> Objeto {
-    if args.len() != 2 {
-        return Objeto::Error(
-            "Se esperaban 2 argumentos (host:puerto, cuerpo)".to_string(),
-        );
-    }
-    let host_puerto = match &args[0] {
-        Objeto::Cadena(hp) => hp.clone(),
-        _ => {
-            return Objeto::Error(
-                "El primer argumento debe ser una cadena (host:puerto)"
-                    .to_string(),
-            );
-        }
-    };
-    let cuerpo = match &args[1] {
-        Objeto::Cadena(c) => c.clone(),
-        _ => {
-            return Objeto::Error(
-                "El segundo argumento debe ser una cadena (cuerpo)".to_string(),
-            );
-        }
-    };
-    match enviar_peticion_tcp("PATCH", &host_puerto, Some(&cuerpo)) {
-        Ok(r) => Objeto::Cadena(r),
-        Err(e) => Objeto::Error(e),
-    }
-}
-
-/// Ensambla y retorna un Objeto::Diccionario con las funciones de red.
 pub fn crear_modulo() -> Objeto {
     let mut mapa: HashMap<LlaveHash, Objeto> = HashMap::new();
-
     mapa.insert(
-        LlaveHash::Cadena("get".to_string()),
-        Objeto::Nativa(net_get as fn(Vec<Objeto>) -> Objeto),
+        LlaveHash::Cadena("solicitud".to_string()),
+        Objeto::Nativa(net_solicitud as fn(Vec<Objeto>) -> Objeto),
     );
-    mapa.insert(
-        LlaveHash::Cadena("post".to_string()),
-        Objeto::Nativa(net_post as fn(Vec<Objeto>) -> Objeto),
-    );
-    mapa.insert(
-        LlaveHash::Cadena("put".to_string()),
-        Objeto::Nativa(net_put as fn(Vec<Objeto>) -> Objeto),
-    );
-    mapa.insert(
-        LlaveHash::Cadena("patch".to_string()),
-        Objeto::Nativa(net_patch as fn(Vec<Objeto>) -> Objeto),
-    );
-    mapa.insert(
-        LlaveHash::Cadena("delete".to_string()),
-        Objeto::Nativa(net_delete as fn(Vec<Objeto>) -> Objeto),
-    );
-
     Objeto::Diccionario(mapa)
 }

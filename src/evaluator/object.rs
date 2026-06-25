@@ -100,6 +100,12 @@ pub enum Objeto {
     // ámbito exterior (el Break se consume, no se propaga).
     Break,
 
+    // Continue — Señal de control para saltar a la siguiente
+    // iteración de un bucle. El bucle que lo recibe evalua la
+    // condición nuevamente (while) o la actualización (for).
+    // Se consume dentro del bucle (no se propaga al exterior).
+    Continue,
+
     // Error(String) — Representa un error en tiempo de ejecución.
     // String aloca en el heap (misma mecánica que Cadena). El mensaje
     // de error vive en heap y se libera cuando el Objeto::Error se dropea.
@@ -226,7 +232,35 @@ impl Objeto {
             Objeto::Nulo => Err("Las claves de diccionario no pueden ser nulo".to_string()),
             Objeto::Retorno(_) => Err("Las claves de diccionario no pueden ser retornos".to_string()),
             Objeto::Break => Err("Las claves de diccionario no pueden ser break".to_string()),
+            Objeto::Continue => Err("Las claves de diccionario no pueden ser continue".to_string()),
             Objeto::Error(_) => Err("Las claves de diccionario no pueden ser errores".to_string()),
+        }
+    }
+
+    pub fn tomar_llave_hash(self) -> Result<LlaveHash, String> {
+        match self {
+            Objeto::Cadena(s) => Ok(LlaveHash::Cadena(s)),
+            Objeto::Entero(n) => Ok(LlaveHash::Entero(n)),
+            Objeto::Booleano(b) => Ok(LlaveHash::Booleano(b)),
+            other => Err(format!("Tipo no válido como clave: {}", other)),
+        }
+    }
+
+    pub fn son_iguales(&self, otro: &Objeto) -> bool {
+        match (self, otro) {
+            (Objeto::Entero(a), Objeto::Entero(b)) => a == b,
+            (Objeto::Flotante(a), Objeto::Flotante(b)) => a == b,
+            (Objeto::Booleano(a), Objeto::Booleano(b)) => a == b,
+            (Objeto::Cadena(a), Objeto::Cadena(b)) => a == b,
+            (Objeto::Nulo, Objeto::Nulo) => true,
+            (Objeto::Break, Objeto::Break) => true,
+            (Objeto::Continue, Objeto::Continue) => true,
+            (Objeto::Error(a), Objeto::Error(b)) => a == b,
+            (Objeto::Arreglo(a), Objeto::Arreglo(b)) => {
+                a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x.son_iguales(y))
+            }
+            (Objeto::Buffer(a), Objeto::Buffer(b)) => a == b,
+            _ => false,
         }
     }
 }
@@ -285,6 +319,9 @@ impl fmt::Display for Objeto {
             // Break: no imprime nada (es una señal de control interna).
             Objeto::Break => Ok(()),
 
+            // Continue: no imprime nada (señal de control interna).
+            Objeto::Continue => Ok(()),
+
             // Error: imprime el mensaje con prefijo "error: " para
             // distinguirlo visualmente de otros valores. El String
             // interno se muestra por referencia (no se mueve ni clona).
@@ -304,26 +341,21 @@ impl fmt::Display for Objeto {
             // con su propio Display ({}), que para Objetos anidados
             // (ej. arreglos dentro de arreglos) se imprime recursivamente.
             Objeto::Arreglo(elementos) => {
-                let strs: Vec<String> = elementos
-                    .iter()
-                    .map(|e| format!("{}", e))
-                    .collect();
-                write!(f, "[{}]", strs.join(", "))
+                write!(f, "[")?;
+                for (i, e) in elementos.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", e)?;
+                }
+                write!(f, "]")
             }
 
-            // Diccionario: imprime los pares clave:valor separados por coma
-            // y encerrados entre llaves, estilo JSON. Se itera sobre el
-            // HashMap. No hay orden garantizado (HashMap no ordena las
-            // entradas). Para un orden determinista, usaríamos BTreeMap,
-            // pero eso requiere Ord en LlaveHash. La iteración devuelve
-            // referencias (&LlaveHash, &Objeto); formateamos cada una con
-            // su Display ({}) sin clonar.
             Objeto::Diccionario(mapa) => {
-                let strs: Vec<String> = mapa
-                    .iter()
-                    .map(|(k, v)| format!("{}: {}", k, v))
-                    .collect();
-                write!(f, "{{{}}}", strs.join(", "))
+                write!(f, "{{")?;
+                for (i, (k, v)) in mapa.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}: {}", k, v)?;
+                }
+                write!(f, "}}")
             }
 
             // Buffer: muestra un resumen con la longitud en bytes.

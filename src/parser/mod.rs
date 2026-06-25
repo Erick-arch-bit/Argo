@@ -125,18 +125,19 @@ impl<'a> Parser<'a> {
     /// inicio desde lexer.token_linea / lexer.token_columna. Esto asegura
     /// que token_linea/token_columna siempre reflejen la posición del
     /// token_actual que el parser está procesando.
-    fn avanzar(&mut self) {
-        // Trasladar la posición de token_siguiente → token_actual.
+    fn avanzar(&mut self) -> Token {
         self.token_linea = self.siguiente_linea;
         self.token_columna = self.siguiente_columna;
-        // Leer el nuevo token; token_siguiente se mueve a token_actual.
-        self.token_actual = std::mem::replace(
-            &mut self.token_siguiente,
-            self.lexer.next().unwrap_or(Token::FinDeArchivo),
+        let anterior = std::mem::replace(
+            &mut self.token_actual,
+            std::mem::replace(
+                &mut self.token_siguiente,
+                self.lexer.next().unwrap_or(Token::FinDeArchivo),
+            ),
         );
-        // Capturar la posición de inicio del nuevo token_siguiente.
         self.siguiente_linea = self.lexer.token_linea;
         self.siguiente_columna = self.lexer.token_columna;
+        anterior
     }
 
     // -----------------------------------------------------------------------
@@ -224,26 +225,21 @@ impl<'a> Parser<'a> {
         // prestado por el match. Ambos son campos independientes del struct
         // Parser, por lo que el borrow checker los acepta como prestamos
         // disjuntos (cada uno es un campo diferente de self).
-        if let Token::Identificador(nombre) = &self.token_actual
-            && self.token_siguiente == Token::Asignacion {
-                // Clonar el nombre: el String dentro del Token se perderá
-                // cuando avancemos el parser. Clone aloca en heap.
-                let nombre_var = nombre.clone();
-                // Consumir el identificador.
-                self.avanzar();
-                // Consumir el signo `=`.
-                self.avanzar();
-                // Parsear la expresión del valor.
-                // NOTA: NO consumimos el `;` aquí. El bucle llamante
-                // (parsear_programa o parsear_bloque) lo consumirá
-                // automáticamente, bien por avance explícito sobre
-                // PuntoComa o por el self.avanzar() genérico del bloque.
-                let valor = self.parsear_expresion(Precedencia::Menor)?;
-                return Some(Statement::AsignacionVariable {
-                    nombre: nombre_var,
-                    valor,
-                });
-            }
+        if self.token_siguiente == Token::Asignacion {
+            let nombre_var = match self.avanzar() {
+                Token::Identificador(n) => n,
+                _ => {
+                    self.error_token_esperado("identificador para la asignación");
+                    return None;
+                }
+            };
+            self.avanzar();
+            let valor = self.parsear_expresion(Precedencia::Menor)?;
+            return Some(Statement::AsignacionVariable {
+                nombre: nombre_var,
+                valor,
+            });
+        }
 
         // Si no es asignación, proceder con el match normal.
         // Se evalúa el token actual por referencia para no consumirlo.
@@ -251,7 +247,9 @@ impl<'a> Parser<'a> {
         // el brazo `_` captura todo lo demás.
         match &self.token_actual {
             // let <identificador> = <expresion>;
-            Token::Let => self.parsear_declaracion_let(),
+            Token::Let => self.parsear_declaracion_let(false),
+            // const <identificador> = <expresion>;
+            Token::Const => self.parsear_declaracion_let(true),
             Token::LlaveAbierta => self.parsear_bloque(),
             Token::If => self.parsear_sentencia_if(),
             Token::While => self.parsear_sentencia_while(),
@@ -259,6 +257,7 @@ impl<'a> Parser<'a> {
             Token::For => self.parsear_sentencia_for(),
             Token::Try => self.parsear_sentencia_try(),
             Token::Break => self.parsear_sentencia_break(),
+            Token::Continue => self.parsear_sentencia_continue(),
             Token::Fn => self.parsear_declaracion_funcion(),
             // Expresiones como sentencias (ej. llamadas a función foo())
             Token::Identificador(_)
@@ -296,7 +295,7 @@ impl<'a> Parser<'a> {
     ///   porque al llamar a `self.avanzar()` se muta el parser, invalidando
     ///   la referencia prestada `n`.
     /// - La expresión parseada se mueve directamente al Statement sin clonar.
-    fn parsear_declaracion_let(&mut self) -> Option<Statement> {
+    fn parsear_declaracion_let(&mut self, constante: bool) -> Option<Statement> {
         // -- Paso 1: Extraer el nombre de la variable --
         // Se toma prestado (&) token_siguiente para examinar su variante
         // sin consumirlo. Si es Identificador, se clona el String interno
@@ -359,7 +358,7 @@ impl<'a> Parser<'a> {
 
         // Se construye y retorna el nodo Statement.
         // nombre (String) se mueve al Statement, valor (Expression) también.
-        Some(Statement::DeclaracionVariable { nombre, valor })
+        Some(Statement::DeclaracionVariable { nombre, valor, constante })
     }
 
     /// Parsea un bloque de código delimitado por llaves: `{ <sentencias> }`
@@ -745,12 +744,8 @@ impl<'a> Parser<'a> {
         }
 
         // -- Paso 5: Extraer el nombre del parámetro del error --
-        let parametro_catch = match &self.token_actual {
-            Token::Identificador(n) => {
-                let nombre = n.clone();
-                self.avanzar();
-                nombre
-            }
+        let parametro_catch = match self.avanzar() {
+            Token::Identificador(nombre) => nombre,
             _ => {
                 let mensaje = format!(
                     "Error de sintaxis: se esperaba un identificador \
@@ -874,17 +869,22 @@ impl<'a> Parser<'a> {
         Some(Statement::Break)
     }
 
+    /// Parsea una sentencia `continue` para saltar a la siguiente iteración.
+    fn parsear_sentencia_continue(&mut self) -> Option<Statement> {
+        self.avanzar();
+        if self.token_actual == Token::PuntoComa {
+            self.avanzar();
+        }
+        Some(Statement::Continue)
+    }
+
     fn parsear_declaracion_funcion(&mut self) -> Option<Statement> {
         // -- Paso 1: Consumir la palabra clave `fn` --
         self.avanzar();
 
         // -- Paso 2: Extraer el nombre de la función --
-        let nombre = match &self.token_actual {
-            Token::Identificador(n) => {
-                let nombre = n.clone();
-                self.avanzar();
-                nombre
-            }
+        let nombre = match self.avanzar() {
+            Token::Identificador(nombre) => nombre,
             _ => {
                 let mensaje = format!(
                     "Error de sintaxis: se esperaba el nombre de la función, pero se encontró {:?}",
@@ -906,13 +906,11 @@ impl<'a> Parser<'a> {
         self.avanzar();
 
         // -- Paso 4: Parsear la lista de parámetros --
-        let mut parametros: Vec<String> = Vec::new();
+        let mut parametros: Vec<String> = Vec::with_capacity(4);
         if self.token_actual != Token::ParentesisCerrado {
             loop {
-                match &self.token_actual {
-                    Token::Identificador(p) => {
-                        let param = p.clone();
-                        self.avanzar();
+                match self.avanzar() {
+                    Token::Identificador(param) => {
                         parametros.push(param);
                     }
                     _ => {
@@ -924,9 +922,6 @@ impl<'a> Parser<'a> {
                         return None;
                     }
                 }
-                // Si sigue una coma, consumirla y continuar.
-                // Se soporta trailing comma: si después de la coma viene
-                // `)`, se sale del bucle inmediatamente.
                 if self.token_actual == Token::Coma {
                     self.avanzar();
                     if self.token_actual == Token::ParentesisCerrado {
@@ -1099,12 +1094,9 @@ impl<'a> Parser<'a> {
     /// - `n.clone()` crea una copia heap del nombre. Es necesario porque
     ///   `self.avanzar()` muta el parser tras extraer el valor.
     fn parsear_identificador(&mut self) -> Option<Expression> {
-        if let Token::Identificador(n) = &self.token_actual {
-            let nombre = n.clone();
-            self.avanzar();
-            Some(Expression::Identificador(nombre))
-        } else {
-            None
+        match self.avanzar() {
+            Token::Identificador(nombre) => Some(Expression::Identificador(nombre)),
+            _ => None,
         }
     }
 
@@ -1150,12 +1142,9 @@ impl<'a> Parser<'a> {
     ///   memoria heap (copia O(n) del contenido). Es necesaria porque
     ///   `self.avanzar()` muta el parser y movería el valor original.
     fn parsear_cadena(&mut self) -> Option<Expression> {
-        if let Token::Cadena(c) = &self.token_actual {
-            let valor = c.clone();
-            self.avanzar();
-            Some(Expression::Cadena(valor))
-        } else {
-            None
+        match self.avanzar() {
+            Token::Cadena(valor) => Some(Expression::Cadena(valor)),
+            _ => None,
         }
     }
 
@@ -1204,8 +1193,7 @@ impl<'a> Parser<'a> {
     /// - `operador` (Token clonado) se almacena directamente en el enum;
     ///   Token sin datos internos (Suma, Resta, Not) son Copy.
     fn parsear_unario(&mut self) -> Option<Expression> {
-        let operador = self.token_actual.clone();
-        self.avanzar();
+        let operador = self.avanzar();
         let derecha = self.parsear_expresion(Precedencia::Prefijo)?;
         Some(Expression::OperacionUnaria {
             operador,
@@ -1264,19 +1252,8 @@ impl<'a> Parser<'a> {
             return self.parsear_acceso_punto(izquierda);
         }
 
-        // Clonar el operador: Token contiene datos en heap (String en
-        // variantes como Identificador) o valores Copy. Clone asegura
-        // ownership independiente. Necesario porque la siguiente llamada
-        // a avanzar() sobrescribirá token_actual.
-        let operador = self.token_actual.clone();
-        // Obtener la precedencia del operador actual. Para operadores
-        // left-associative (todos los matemáticos y lógicos), se pasa
-        // la misma precedencia al lado derecho. Esto hace que:
-        //   - `1 + 2 + 3` se agrupe como `((1 + 2) + 3)` (left-assoc)
-        //   - `1 + 2 * 3` se agrupe como `(1 + (2 * 3))` (precedencia)
         let prec = self.precedencia_actual();
-        // Avanzar al primer token de la expresión derecha.
-        self.avanzar();
+        let operador = self.avanzar();
         // Parsear la expresión derecha con la precedencia del operador
         // como mínimo. El `?` propaga None si falla.
         let derecha = self.parsear_expresion(prec)?;
@@ -1317,9 +1294,8 @@ impl<'a> Parser<'a> {
         // Consumir el `(`
         self.avanzar();
 
-        let mut argumentos = Vec::new();
+        let mut argumentos = Vec::with_capacity(4);
 
-        // Si el primer token es `)`, la lista está vacía.
         if self.token_actual != Token::ParentesisCerrado {
             loop {
                 // Parsear un argumento. El `?` propaga None si falla.
@@ -1376,9 +1352,8 @@ impl<'a> Parser<'a> {
         // Consumir el `[`.
         self.avanzar();
 
-        let mut elementos = Vec::new();
+        let mut elementos = Vec::with_capacity(4);
 
-        // Si el primer token es `]`, el arreglo está vacío.
         if self.token_actual != Token::CorcheteCerrado {
             loop {
                 // Parsear un elemento. `?` propaga None si falla.
@@ -1491,23 +1466,14 @@ impl<'a> Parser<'a> {
 
         // El token siguiente debe ser un identificador (nombre de propiedad).
         // Si no lo es, se registra un error y se aborta.
-        match &self.token_actual {
-            Token::Identificador(nombre) => {
-                // Clonar el nombre: el String dentro del Token se moverá
-                // cuando self.avanzar() sobrescriba token_actual.
-                let nombre_propiedad = nombre.clone();
-                // Consumir el identificador.
-                self.avanzar();
-                // Construir AccesoIndice con una Cadena como índice.
-                // El evaluador tratará `objeto["propiedad"]` igual que
-                // `objeto.propiedad` porque ambos producen el mismo AST.
+        match self.avanzar() {
+            Token::Identificador(nombre_propiedad) => {
                 Some(Expression::AccesoIndice {
                     izquierda: Box::new(izquierda),
                     indice: Box::new(Expression::Cadena(nombre_propiedad)),
                 })
             }
             _ => {
-                // El token después del punto no es un identificador válido.
                 self.errores.push(self.error_ubicacion(
                     "Error de sintaxis: se esperaba un nombre de propiedad \
                      después del '.'"
@@ -1544,9 +1510,8 @@ impl<'a> Parser<'a> {
         // Consumir el `{`.
         self.avanzar();
 
-        let mut pares = Vec::new();
+        let mut pares = Vec::with_capacity(4);
 
-        // Si el primer token es `}`, el diccionario está vacío.
         if self.token_actual != Token::LlaveCerrada {
             loop {
                 // Parsear la expresión de la clave.
@@ -1613,24 +1578,18 @@ impl<'a> Parser<'a> {
     // no puede retener referencias al Token, que se sobrescribe en
     // cada avanzar()). La clonación aloca heap (copia O(n)).
     fn parsear_import(&mut self) -> Option<Expression> {
-        // Paso 1: Consumir el token `import`.
         self.avanzar();
-
-        // Paso 2: Verificar que el siguiente token sea una cadena.
-        if let Token::Cadena(ruta) = &self.token_actual {
-            // Paso 3: Clonar la ruta y avanzar.
-            let ruta = ruta.clone();
-            self.avanzar();
-            // Paso 4: Retornar el nodo AST.
-            Some(Expression::Import(ruta))
-        } else {
-            let mensaje = format!(
-                "Error de sintaxis: se esperaba una ruta de archivo como cadena \
-                 después de 'import', pero se encontró {:?}",
-                self.token_actual
-            );
-            self.errores.push(self.error_ubicacion(mensaje));
-            None
+        match self.avanzar() {
+            Token::Cadena(ruta) => Some(Expression::Import(ruta)),
+            _ => {
+                let mensaje = format!(
+                    "Error de sintaxis: se esperaba una ruta de archivo como cadena \
+                     después de 'import', pero se encontró {:?}",
+                    self.token_actual
+                );
+                self.errores.push(self.error_ubicacion(mensaje));
+                None
+            }
         }
     }
 
@@ -1670,13 +1629,11 @@ impl<'a> Parser<'a> {
         self.avanzar();
 
         // Paso 3: Parsear la lista de parámetros.
-        let mut parametros: Vec<String> = Vec::new();
+        let mut parametros: Vec<String> = Vec::with_capacity(4);
         if self.token_actual != Token::ParentesisCerrado {
             loop {
-                match &self.token_actual {
-                    Token::Identificador(p) => {
-                        let param = p.clone();
-                        self.avanzar();
+                match self.avanzar() {
+                    Token::Identificador(param) => {
                         parametros.push(param);
                     }
                     _ => {

@@ -116,10 +116,11 @@ pub fn ast_a_bytes(expr: &Expression) -> Vec<u8> {
 // ---------------------------------------------------------------------------
 pub fn sentencia_a_bytes(stmt: &Statement) -> Vec<u8> {
     match stmt {
-        Statement::DeclaracionVariable { nombre, valor } => {
+        Statement::DeclaracionVariable { nombre, valor, constante } => {
             let valor_bytes = ast_a_bytes(valor);
-            let mut bytes = Vec::with_capacity(10 + nombre.len() + valor_bytes.len());
+            let mut bytes = Vec::with_capacity(11 + nombre.len() + valor_bytes.len());
             bytes.push(OP_LET);
+            bytes.push(if *constante { 1 } else { 0 });
             string_a_bytes(&mut bytes, nombre);
             bytes.extend_from_slice(&valor_bytes);
             bytes
@@ -259,9 +260,14 @@ pub fn bytes_a_sentencia(buf: &[u8], cursor: &mut usize) -> Result<Statement, St
 
     match opcode {
         OP_LET => {
+            if *cursor >= buf.len() {
+                return Err("bytecode: buffer insuficiente para OP_LET".to_string());
+            }
+            let constante = buf[*cursor] != 0;
+            *cursor += 1;
             let nombre = bytes_a_string(buf, cursor)?;
             let valor = bytes_a_ast(buf, cursor)?;
-            Ok(Statement::DeclaracionVariable { nombre, valor })
+            Ok(Statement::DeclaracionVariable { nombre, valor, constante })
         }
 
         _ => Err(format!(

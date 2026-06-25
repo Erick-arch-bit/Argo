@@ -11,7 +11,7 @@
 //     estructura Entorno tenga tamaño fijo (evita recursión infinita).
 //   - Option<Box<Entorno>>: permite que un Entorno global no tenga padre.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::evaluator::object::Objeto;
 
@@ -40,6 +40,11 @@ pub struct Entorno {
     // libera heap si son Cadena, Error, Retorno, etc.). No hay fuga
     // de memoria porque el ownership jerárquico garantiza la limpieza.
     pub almacen: HashMap<String, Objeto>,
+
+    // Conjunto de nombres de variables declaradas como `const`.
+    // Cuando `actualizar` intenta reasignar una variable cuyo nombre
+    // está en este conjunto, retorna un error de reasignación de constante.
+    pub constantes: HashSet<String>,
 
     // Entorno padre opcional. None en el entorno global (raíz).
     // Some(Box<Entorno>) cuando este entorno es un ámbito anidado.
@@ -76,43 +81,15 @@ impl Entorno {
         // No hay heap allocation aquí porque None no contiene datos.
         Entorno {
             almacen: HashMap::new(),
+            constantes: HashSet::new(),
             externo: None,
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Constructor de entorno local (ámbito anidado)
-    // -----------------------------------------------------------------------
-    // Crea un Entorno con un padre. Se usa al entrar en un bloque,
-    // función, o cualquier construcción que introduzca un nuevo scope.
-    //
-    // Parámetros:
-    //   `externo: Entorno` — el entorno padre, recibido por ownership (move).
-    //
-    // # Gestión de memoria
-    // El Entorno padre se mueve dentro de un Box (heap allocation).
-    // Box::new(externo) transfiere la ownership del Entorno al heap.
-    // El Entorno padre original ya no existe en el stack; el nuevo
-    // Entorno local posee un puntero al padre en el heap. Cuando el
-    // Entorno local se dropea, el Box se dropea también, liberando
-    // el heap del padre (a menos que otro Entorno aún lo referencie —
-    // pero cada Entorno tiene ownership exclusiva de su padre; la
-    // cadena es lineal, no un grafo compartido).
     pub fn nuevo_local(externo: Entorno) -> Self {
-        // Box::new() solicita memoria al asignador global (heap).
-        // En esta línea, el Entorno `externo` se mueve (move) al heap.
-        // Después de esta línea, la variable `externo` original ya no
-        // es accesible: su ownership fue transferida al Box. Esto lo
-        // garantiza el borrow checker: cualquier intento de usar
-        // `externo` después de `Box::new(externo)` sería un error de
-        // compilación (use after move).
-        //
-        // El HashMap dentro del Entorno padre no se copia; se mueve
-        // puntero por puntero (solo los 56 bytes del struct HashMap
-        // se copian al heap; los buffers internos del HashMap siguen
-        // en sus direcciones originales de heap).
         Entorno {
             almacen: HashMap::new(),
+            constantes: HashSet::new(),
             externo: Some(Box::new(externo)),
         }
     }
@@ -223,16 +200,13 @@ impl Entorno {
     // que haya falta de memoria del sistema (OutOfMemory), en cuyo
     // caso Rust aborta el proceso (no es un panic! recuperable).
     pub fn asignar(&mut self, nombre: String, valor: Objeto) {
-        // `nombre` (String) se mueve al HashMap como clave.
-        // `valor` (Objeto) se mueve al HashMap como valor.
-        // `insert` retorna `Option<Objeto>` con el valor anterior si
-        // la clave ya existía, o `None` si es una clave nueva.
-        // Ignoramos el retorno con `let _ = ...`.
-        //
-        // Si la clave ya existía, el Drop del Objeto anterior se
-        // ejecuta cuando el Option retornado por insert se descarta.
-        // Esto libera cualquier heap que poseyera (String interno,
-        // Box interno, etc.) de forma automática y sin fuga.
+        let _ = self.almacen.insert(nombre, valor);
+    }
+
+    pub fn declarar(&mut self, nombre: String, valor: Objeto, es_constante: bool) {
+        if es_constante {
+            self.constantes.insert(nombre.clone());
+        }
         let _ = self.almacen.insert(nombre, valor);
     }
 
@@ -283,17 +257,15 @@ impl Entorno {
         // Recorrer la cadena de ámbitos usando un bucle. En cada iteración,
         // `entorno_actual` es &mut Entorno del nivel actual.
         while let Some(entorno) = entorno_actual {
-            // Si la variable existe en este ámbito, actualizar y retornar.
-            if entorno.almacen.contains_key(nombre) {
-                // insert sobrescribe el valor existente y retorna el
-                // anterior. Ignoramos el retorno con `let _ = ...`.
-                let _ = entorno.almacen.insert(nombre.to_string(), valor);
+            if let Some(entry) = entorno.almacen.get_mut(nombre) {
+                if entorno.constantes.contains(nombre) {
+                    return Err(format!(
+                        "No se puede reasignar una constante: {}", nombre
+                    ));
+                }
+                *entry = valor;
                 return Ok(());
             }
-            // No está aquí: avanzar al padre (si existe).
-            // `as_mut()` convierte `&mut Option<Box<Entorno>>` en
-            // `Option<&mut Box<Entorno>>`. Luego `as_deref_mut()`
-            // aplica DerefMut para obtener `Option<&mut Entorno>`.
             entorno_actual = entorno
                 .externo
                 .as_mut()

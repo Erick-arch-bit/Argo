@@ -8,7 +8,7 @@ pub struct Programa {
 
 #[derive(Debug, Clone)]
 pub enum Statement {
-    DeclaracionVariable { nombre: String, valor: Expression },
+    DeclaracionVariable { nombre: String, valor: Expression, constante: bool },
     Bloque(Vec<Statement>),
     If {
         condicion: Expression,
@@ -32,6 +32,7 @@ pub enum Statement {
         bloque_catch: Box<Statement>,
     },
     Break,
+    Continue,
     Expresion(Expression),
     AsignacionVariable { nombre: String, valor: Expression },
     DeclaracionFuncion {

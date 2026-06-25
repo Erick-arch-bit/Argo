@@ -1,22 +1,11 @@
-//
-// Módulo estándar os — Interacción con el sistema anfitrión.
-// Expone cmd (ejecutar comando shell), env (leer variable de
-// entorno) y exit (terminar el proceso) en un Objeto::Diccionario
-// bajo el nombre "os".
-//
-
 use std::collections::HashMap;
 use std::env;
 use std::process::{exit, Command};
 
 use crate::evaluator::{LlaveHash, Objeto};
 
-/// Ensambla y retorna un Objeto::Diccionario con las funciones
-/// del sistema operativo.
 pub fn crear_modulo() -> Objeto {
-    // Ejecuta un comando en el shell del sistema y retorna su stdout.
-    // Recibe 1 argumento: Objeto::Cadena(comando).
-    fn os_cmd(args: Vec<Objeto>) -> Objeto {
+    fn os_ejecutar(args: Vec<Objeto>) -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (comando)".to_string(),
@@ -43,9 +32,7 @@ pub fn crear_modulo() -> Objeto {
         }
     }
 
-    // Lee una variable de entorno. Recibe 1 argumento:
-    // Objeto::Cadena(llave). Retorna Cadena(valor) o Nulo.
-    fn os_env(args: Vec<Objeto>) -> Objeto {
+    fn os_variables(args: Vec<Objeto>) -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (llave)".to_string(),
@@ -66,8 +53,6 @@ pub fn crear_modulo() -> Objeto {
         }
     }
 
-    // Termina el proceso con un código de salida.
-    // Recibe 1 argumento: Objeto::Entero(codigo).
     fn os_exit(args: Vec<Objeto>) -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
@@ -86,20 +71,60 @@ pub fn crear_modulo() -> Objeto {
         exit(codigo);
     }
 
+    fn os_directorio_actual(args: Vec<Objeto>) -> Objeto {
+        if !args.is_empty() {
+            return Objeto::Error(
+                "os.directorio_actual no recibe argumentos".to_string(),
+            );
+        }
+        match env::current_dir() {
+            Ok(path) => Objeto::Cadena(path.to_string_lossy().to_string()),
+            Err(e) => Objeto::Error(format!("Error al obtener directorio actual: {}", e)),
+        }
+    }
+
+    fn os_directorio_temporal(args: Vec<Objeto>) -> Objeto {
+        if !args.is_empty() {
+            return Objeto::Error(
+                "os.directorio_temporal no recibe argumentos".to_string(),
+            );
+        }
+        Objeto::Cadena(env::temp_dir().to_string_lossy().to_string())
+    }
+
+    fn os_argumentos(args: Vec<Objeto>) -> Objeto {
+        if !args.is_empty() {
+            return Objeto::Error(
+                "os.argumentos no recibe argumentos".to_string(),
+            );
+        }
+        let args: Vec<Objeto> = env::args()
+            .map(Objeto::Cadena)
+            .collect();
+        Objeto::Arreglo(args)
+    }
+
+    fn os_procesadores(args: Vec<Objeto>) -> Objeto {
+        if !args.is_empty() {
+            return Objeto::Error(
+                "os.procesadores no recibe argumentos".to_string(),
+            );
+        }
+        let count = std::thread::available_parallelism()
+            .map(|n| n.get() as i64)
+            .unwrap_or(1);
+        Objeto::Entero(count)
+    }
+
     let mut mapa: HashMap<LlaveHash, Objeto> = HashMap::new();
 
-    mapa.insert(
-        LlaveHash::Cadena("cmd".to_string()),
-        Objeto::Nativa(os_cmd as fn(Vec<Objeto>) -> Objeto),
-    );
-    mapa.insert(
-        LlaveHash::Cadena("env".to_string()),
-        Objeto::Nativa(os_env as fn(Vec<Objeto>) -> Objeto),
-    );
-    mapa.insert(
-        LlaveHash::Cadena("exit".to_string()),
-        Objeto::Nativa(os_exit as fn(Vec<Objeto>) -> Objeto),
-    );
+    mapa.insert(LlaveHash::Cadena("ejecutar".to_string()), Objeto::Nativa(os_ejecutar as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("variables".to_string()), Objeto::Nativa(os_variables as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("exit".to_string()), Objeto::Nativa(os_exit as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("directorio_actual".to_string()), Objeto::Nativa(os_directorio_actual as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("directorio_temporal".to_string()), Objeto::Nativa(os_directorio_temporal as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("argumentos".to_string()), Objeto::Nativa(os_argumentos as fn(Vec<Objeto>) -> Objeto));
+    mapa.insert(LlaveHash::Cadena("procesadores".to_string()), Objeto::Nativa(os_procesadores as fn(Vec<Objeto>) -> Objeto));
 
     Objeto::Diccionario(mapa)
 }

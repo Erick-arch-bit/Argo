@@ -24,6 +24,7 @@ fn tipo_objeto(o: &Objeto) -> &'static str {
         Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
         Objeto::Retorno(_) => "retorno",
         Objeto::Break => "break",
+        Objeto::Continue => "continue",
         Objeto::Error(_) => "error",
     }
 }

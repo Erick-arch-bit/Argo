@@ -1,106 +1,41 @@
-# Argo v1.2.0
+# Argo v1.3.0
 
-Argo es un lenguaje de programación interpretado, minimalista y extensible, escrito en Rust sin dependencias externas. Su sintaxis combina lo mejor de C y Rust con tipado dinámico.
+Argo es un lenguaje de programación interpretado, minimalista y extensible, escrito en Rust **sin dependencias externas**.
+
+```bash
+curl -sSL https://github.com/Erick-arch-bit/Argo/releases/download/v1.3.0/install.sh | bash
+```
 
 ## Características
 
-### Tipos y valores
-- **Enteros** (`i64`), **flotantes** (`f64`), **booleanos**, **cadenas**, **nulo**
-- **Arreglos** heterogéneos: `[1, "dos", true]`
-- **Diccionarios** con claves string/integer/boolean: `{nombre: "Argo", version: 1}`
-- **Buffer** de bytes: `buffer.alloc(256)` — memoria binaria contigua
-- **Funciones** como ciudadanos de primera clase (closures)
+| Área | Detalle |
+|------|---------|
+| **Tipos** | Entero (`i64`), Flotante (`f64`), Booleano, Cadena, Nulo, Arreglo, Diccionario, Buffer, Función |
+| **Control** | `if/else`, `while`, `for`, `break`, `try/catch` |
+| **Variables** | `let` (mutable), `const` (inmutable, verificado en runtime) |
+| **Funciones** | Declarativas `fn nombre(){}`, anónimas `fn(){}`, closures con ámbito léxico |
+| **Módulos** | `import "ruta"` (local/remoto), `import "https://..."` con caché automática |
+| **Const** | `const PI = 3.1416;` — error si se reasigna |
+| **Concurrencia** | `thread.spawn("código")` — hilos aislados |
+| **GPU** | Framebuffer por software: `gpu.crear_buffer`, `.pixel`, `.linea`, `.rect`, `.circulo`, `.guardar`, `.mostrar` |
+| **Caché** | AST serializado a `.argbc` — segunda ejecución instantánea |
 
-### Operadores
-- Aritméticos: `+`, `-`, `*`, `/`, `%`
-- Relacionales: `==`, `!=`, `<`, `>`, `<=`, `>=`
-- Lógicos: `!` (not unario)
-- Concatenación string + número (coerción automática)
+## Biblioteca estándar
 
-### Control de flujo
-- `if` / `else` / `else if`
-- `while` y `for` (estilo C)
-- `break` para salir de bucles
-- `try` / `catch` para manejo de errores
-
-### Funciones
-- Declaración con `fn`: `fn suma(a, b) { return a + b; }`
-- Anónimas (closures): `fn(x, y) { x + y }`
-- Ámbito léxico con cadenas de entornos
-
-### Variables
-- Declaración: `let x = 10;`
-- Asignación: `x = 20;` (busca en la cadena de ámbitos)
-
-### Módulos e importación
-- `import "ruta"` — ejecuta otro archivo y retorna un diccionario con sus variables exportadas
-- `import "https://..."` — importación remota con caché automática de dos niveles (`.argbc` binario + `.argo` textual)
-- Resolución descentralizada: cualquier URL pública es un módulo válido
-
-### Biblioteca estándar
-- `print(...)` — imprime argumentos separados por espacio
-- `len(obj)` — longitud de string, arreglo, buffer o diccionario
-- `push(arr, elem)` — retorna nuevo arreglo con el elemento añadido
-- `tipo(obj)` — retorna el nombre del tipo como string
-
-#### Módulos nativos
-
-| Módulo | Funciones | Descripción |
-|--------|-----------|-------------|
-| `math` | `sin`, `cos`, `sqrt`, `abs`, `random`, `PI`, `E` | Operaciones matemáticas |
-| `fs` | `leer`, `escribir` | Sistema de archivos |
-| `net` | `solicitud` | Peticiones HTTP |
-| `json` | `parsear`, `stringificar` | Serialización JSON |
-| `time` | `ahora`, `dormir` | Temporización |
-| `os` | `ejecutar`, `variables` | Sistema operativo |
-| `str` | `longitud`, `mayusculas`, `minusculas`, `recortar`, `dividir`, `contiene`, `subcadena`, `reemplazar`, `empieza_con`, `termina_con` | Manipulación de cadenas |
-| `arr` | `len`, `push`, `pop` | Manipulación de arreglos |
-| `buffer` | `alloc`, `write`, `read` | Memoria binaria contigua |
-| `thread` | `spawn` | Ejecución en segundo plano |
-
-### Caché binaria de AST (`.argbc`)
-- Tras el primer parseo, el AST se serializa a disco en formato binario
-- Las ejecuciones posteriores cargan el AST directamente desde `.argbc` — **sin lexer ni parser**
-- Soporte para módulos locales y remotos
-
-### Comentarios
-- Línea: `// comentario`
-- Bloque: `/* comentario */`
-
-### Otras características
-- REPL interactivo
-- Sistema de proyectos (`argo init` / `argo.toml` / `argo run`)
-- Parser tolerante a errores (acumula errores sintácticos sin panic)
-- Comas finales toleradas en arreglos, diccionarios, parámetros y argumentos
-- Paréntesis opcionales en `if`, `while`, `for` y `catch`
-
-## Instalación
-
-### Descarga directa (recomendado)
-Descarga el binario precompilado para tu plataforma desde [GitHub Releases](https://github.com/Erick-arch-bit/Argo/releases):
-
-```bash
-# Linux amd64
-curl -sSL https://github.com/Erick-arch-bit/Argo/releases/download/v1.2.0/argo-linux-amd64 -o argo
-chmod +x argo
-sudo mv argo /usr/local/bin/
-```
-
-Cada release incluye checksums SHA256 para verificar la integridad de los binarios.
-
-### Compilación desde fuente
-```bash
-git clone <url-del-repo>
-cd argo
-cargo build --release
-sudo cp target/release/argo /usr/local/bin/
-```
-
-### Script de instalación
-```bash
-chmod +x install.sh
-./install.sh
-```
+| Módulo | Funciones |
+|--------|-----------|
+| `math` | `sin`, `cos`, `tan`, `sqrt`, `abs`, `pow`, `log`, `log10`, `floor`, `ceil`, `round`, `max`, `min`, `random`, `PI`, `E` |
+| `str` | `longitud`, `mayusculas`, `minusculas`, `recortar`, `dividir`, `contiene`, `subcadena`, `reemplazar`, `empieza_con`, `termina_con`, `indice_de`, `invertir`, `repetir`, `a_arreglo`, `codigo_en`, `de_codigo` |
+| `arr` | `len`, `push`, `pop`, `contiene`, `invertir`, `primero`, `ultimo`, `concatenar`, `vacio`, `indice_de`, `plano` |
+| `fs` | `leer`, `escribir`, `existe`, `es_directorio`, `es_archivo`, `eliminar`, `crear_directorio`, `listar` |
+| `buffer` | `alloc`, `write`, `read`, `longitud`, `a_cadena`, `de_cadena`, `copiar` |
+| `os` | `ejecutar`, `variables`, `directorio_actual`, `directorio_temporal`, `argumentos`, `procesadores` |
+| `time` | `ahora`, `dormir`, `segundos`, `micros` |
+| `net` | `solicitud` — peticiones HTTP/HTTPS (GET, POST, PUT, DELETE, etc.) |
+| `json` | `parsear`, `stringificar` |
+| `thread` | `spawn` |
+| `gpu` | `crear_buffer`, `pixel`, `linea`, `rect`, `circulo`, `guardar`, `mostrar`, `limpiar` |
+| Built-in | `print`, `len`, `push`, `tipo` |
 
 ## Uso
 
@@ -109,73 +44,61 @@ argo                  REPL interactivo
 argo <archivo.argo>   Ejecuta un script
 argo init             Crea un nuevo proyecto
 argo run              Ejecuta el proyecto actual
-argo repl             Inicia el REPL explícitamente
 ```
 
-### Ejemplo
-
 ```rust
-// Hola mundo
-print("Hola desde Argo v1.2.0");
+print("Hola desde Argo v1.3.0");
 
-// Variables
-let radio = 5;
+// Constante inmutable
 const PI = 3.1416;
-let area = PI * radio * radio;
-print("Área:", area);
+let radio = 5;
+print("Área:", PI * radio * radio);
 
-// Funcion recursiva
+// Fibonnaci recursivo
 fn fib(n) {
-    if (n <= 1) { return n; }
+    if (n <= 1) return n;
     return fib(n - 1) + fib(n - 2);
 }
 print("fib(10):", fib(10));
 
-// Diccionarios y arreglos
-let usuario = {"nombre": "Argo", "version": 1.2};
-let nums = [1, 2, 3, 4];
-push(nums, 5);
+// GPU — framebuffer por software
+let fb = gpu.crear_buffer(200, 100);
+fb = gpu.limpiar(fb, 20, 20, 80);
+fb = gpu.circulo(fb, 100, 50, 40, 255, 200, 0);
+gpu.guardar(fb, "output.ppm");
 
-// Buffer de bytes
-let buf = buffer.alloc(4);
-buffer.write(buf, 0, 0x41);
-buffer.write(buf, 1, 0x72);
-buffer.write(buf, 2, 0x67);
-buffer.write(buf, 3, 0x6f);
-print("Buffer:", buf);
-print("Byte 0:", buffer.read(buf, 0));
-
-// Hilo en segundo plano
-thread.spawn("print(\"Ejecutándose en paralelo\")");
-print("Esto se imprime inmediatamente");
-
-// Importación remota con caché
-let lib = import "https://ejemplo.com/lib.argo";
-print(lib.mi_variable);
+// Módulos
+let lib = import "lib.argo";
+let remoto = import "https://ejemplo.com/mod.argo";
 
 // Manejo de errores
 try {
     let x = 10 / 0;
 } catch (e) {
-    print("Error atrapado:", e);
+    print("Error:", e);
 }
+```
 
-// Modulos locales
-let m = import "milib.argo";
-print(m.variable);
+## Instalación
 
-// Math
-print(math.sqrt(144), math.PI);
+### Script automático (recomendado)
+```bash
+curl -sSL https://github.com/Erick-arch-bit/Argo/releases/download/v1.3.0/install.sh | bash
+```
+Detecta SO/arquitectura (linux-amd64, linux-arm64, darwin-amd64, darwin-arm64) y descarga el binario precompilado. Si falla, compila desde fuente.
+
+### Compilación manual
+```bash
+git clone <repo-url>
+cd argo
+cargo build --release
+cp target/release/argo /usr/local/bin/
 ```
 
 ## Licencia
 
-Argo se distribuye bajo la licencia **MIT**. Ver [LICENSE](LICENSE).
+MIT — ver [LICENSE](LICENSE).
 
-## Contribuir
+## Cambios por versión
 
-Lee [CONTRIBUTING.md](CONTRIBUTING.md) para conocer el flujo de trabajo.
-
-## Seguridad
-
-Reporta vulnerabilidades siguiendo el proceso descrito en [SECURITY.md](SECURITY.md).
+Ver [CHANGELOG.md](CHANGELOG.md).

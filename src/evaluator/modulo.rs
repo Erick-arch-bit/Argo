@@ -11,7 +11,7 @@
 // como subproceso para fetching HTTP.
 //
 
-use std::collections::hash_map::DefaultHasher;
+use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::env;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -140,6 +140,50 @@ fn cargar_argbc(ruta: &std::path::Path) -> Result<Vec<Statement>, String> {
 }
 
 // ---------------------------------------------------------------------------
+// leer_argo_mod — Parsea el archivo de manifiesto `argo.mod`
+// ---------------------------------------------------------------------------
+// Formato: clave = valor (una por línea, `#` para comentarios).
+// Retorna un HashMap<String, String> vacío si no existe o hay error.
+fn leer_argo_mod() -> HashMap<String, String> {
+    let ruta = match env::current_dir() {
+        Ok(d) => d.join("argo.mod"),
+        Err(_) => return HashMap::new(),
+    };
+
+    let contenido = match fs::read_to_string(&ruta) {
+        Ok(c) => c,
+        Err(_) => return HashMap::new(),
+    };
+
+    let mut mapa = HashMap::new();
+
+    for linea in contenido.lines() {
+        let linea = linea.trim();
+        if linea.is_empty() || linea.starts_with('#') {
+            continue;
+        }
+
+        match linea.split_once('=') {
+            Some((clave, valor)) => {
+                let clave = clave.trim().to_string();
+                let valor = valor.trim().to_string();
+                if !clave.is_empty() && !valor.is_empty() {
+                    mapa.insert(clave, valor);
+                }
+            }
+            None => {
+                eprintln!(
+                    "⚠ argo.mod: línea ignorada (formato esperado: clave = valor): {}",
+                    linea
+                );
+            }
+        }
+    }
+
+    mapa
+}
+
+// ---------------------------------------------------------------------------
 // importar — Punto de entrada para la resolución y compilación de módulos
 // ---------------------------------------------------------------------------
 // Retorna el AST listo para el evaluador (Vec<Statement>).
@@ -154,7 +198,15 @@ fn cargar_argbc(ruta: &std::path::Path) -> Result<Vec<Statement>, String> {
 //   1. Busca <ruta>.argbc → cache hit (deserializa, retorna)
 //   2. Lee <ruta> textual  → parsea, guarda .argbc junto al .argo, retorna
 pub fn importar(ruta_o_url: &str) -> Result<Vec<Statement>, String> {
-    let ruta = ruta_o_url.trim();
+    let ruta_base = ruta_o_url.trim();
+
+    // Resolver alias via import map (argo.mod)
+    let mapa_mod = leer_argo_mod();
+    let ruta = if let Some(resuelto) = mapa_mod.get(ruta_base) {
+        resuelto.as_str()
+    } else {
+        ruta_base
+    };
 
     if ruta.starts_with("http://") || ruta.starts_with("https://") {
         let dir_cache = obtener_dir_cache();

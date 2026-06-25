@@ -96,4 +96,5 @@ jobs:
           gh release upload "${{ github.ref_name }}" \
             "${{ matrix.binary_name }}" \
             "${{ matrix.binary_name }}.sha256" \
+            install.sh \
             --clobber

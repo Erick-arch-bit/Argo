@@ -44,7 +44,7 @@ esac
 
 INSTALL_DIR="${HOME}/.local/bin"
 VERSION="${VERSION:-latest}"
-REPO="Argo-Lang/Argo"
+REPO="Erick-arch-bit/Argo-Lang"
 
 echo ""
 echo -e "  ${BLD}Argo${RST} ${DIM}Instalación para ${PLATAFORMA}${RST}"

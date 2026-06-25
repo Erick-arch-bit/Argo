@@ -3,7 +3,7 @@
 Argo es un lenguaje de programación interpretado, minimalista y extensible, escrito en Rust **sin dependencias externas**.
 
 ```bash
-curl -sSL https://github.com/Erick-arch-bit/Argo/releases/download/v1.3.0/install.sh | bash
+curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.3.0/install.sh | bash
 ```
 
 ## Características
@@ -83,7 +83,7 @@ try {
 
 ### Script automático (recomendado)
 ```bash
-curl -sSL https://github.com/Erick-arch-bit/Argo/releases/download/v1.3.0/install.sh | bash
+curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.3.0/install.sh | bash
 ```
 Detecta SO/arquitectura (linux-amd64, linux-arm64, darwin-amd64, darwin-arm64) y descarga el binario precompilado. Si falla, compila desde fuente.
 

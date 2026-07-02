@@ -24,7 +24,7 @@ use std::collections::HashMap;
 // Todas son referencias (&) en las funciones del evaluador: el AST se
 // construye una vez y se recorre sin tomar ownership. Esto evita clonar
 // o mover el árbol, que puede ser grande.
-use crate::ast::{Expression, Programa, Statement};
+use crate::ast::{Expression, Patron, Programa, Statement};
 use crate::lexer::token::Token;
 
 // ---------------------------------------------------------------------------
@@ -141,8 +141,11 @@ pub fn configurar_entorno_global() -> Entorno {
             Objeto::Arreglo(_) => "arreglo",
             Objeto::Diccionario(_) => "diccionario",
             Objeto::Buffer(_) => "buffer",
+            Objeto::StructDef(_) => "struct_def",
+            Objeto::Instancia { .. } => "instancia",
             Objeto::Break => "break",
             Objeto::Continue => "continue",
+            Objeto::Excepcion(_) => "excepcion",
         };
         Objeto::Cadena(nombre.to_string())
     };
@@ -153,6 +156,21 @@ pub fn configurar_entorno_global() -> Entorno {
     entorno.asignar("tipo".to_string(), Objeto::Nativa(tipo_nativa));
     entorno.asignar("entero".to_string(), Objeto::Nativa(cast_entero));
     entorno.asignar("cadena".to_string(), Objeto::Nativa(cast_cadena));
+
+    let assert_nativa = |args: Vec<Objeto>| -> Objeto {
+        if args.len() < 1 || args.len() > 2 {
+            return Objeto::Error(
+                "assert: se esperaban 1-2 argumentos (condición, mensaje?)".to_string(),
+            );
+        }
+        let cond = &args[0];
+        if !es_truthy(cond) {
+            let msg = if args.len() == 2 { format!("{}", args[1]) } else { "".to_string() };
+            return Objeto::Error(format!("ASSERTION FAILED: {}", msg));
+        }
+        Objeto::Nulo
+    };
+    entorno.asignar("assert".to_string(), Objeto::Nativa(assert_nativa));
 
     // Inyectar módulos de la biblioteca estándar (math, fs, net, json).
     crate::stdlib::inyectar_stdlib(&mut entorno);
@@ -205,7 +223,7 @@ pub fn evaluar_programa(programa: &Programa, entorno: &mut Entorno) -> Objeto {
         // la ownership se transferiría al match y no podríamos retornarlo.
         match &resultado {
             // Objeto::Error(_) y Objeto::Retorno(_) interrumpen el flujo.
-            Objeto::Error(_) | Objeto::Retorno(_) => break,
+            Objeto::Error(_) | Objeto::Retorno(_) | Objeto::Excepcion(_) => break,
             // Break y Continue se consumen (no se propagan al programa).
             Objeto::Break | Objeto::Continue => break,
             // Cualquier otro valor es un resultado normal.
@@ -295,13 +313,13 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
             //    (consistente con evaluar_bloque). Esto permite que
             //    actualizar() modifique variables del ámbito exterior.
             let resultado_init = evaluar_sentencia(inicializacion, entorno);
-            if let Objeto::Error(_) = &resultado_init { return resultado_init }
+            if resultado_init.es_error() { return resultado_init }
 
             // 2. Bucle principal.
             loop {
                 // 2a. Evaluar la condición.
                 let resultado_cond = evaluar_expresion(condicion, entorno);
-                if let Objeto::Error(_) = &resultado_cond { return resultado_cond }
+                if resultado_cond.es_error() { return resultado_cond }
 
                 // 2b. Si la condición es falsy, salir del bucle.
                 if !es_truthy(&resultado_cond) {
@@ -311,7 +329,7 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
                 // 2c. Evaluar el cuerpo.
                 let resultado_cuerpo = evaluar_sentencia(cuerpo, entorno);
                 match &resultado_cuerpo {
-                    Objeto::Retorno(_) | Objeto::Error(_) => {
+                    Objeto::Retorno(_) | Objeto::Error(_) | Objeto::Excepcion(_) => {
                         return resultado_cuerpo;
                     }
                     // Break: detener el bucle sin propagar la señal.
@@ -323,7 +341,7 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
 
                 // 2d. Evaluar la actualización (normalmente i = i + 1).
                 let resultado_act = evaluar_sentencia(actualizacion, entorno);
-                if let Objeto::Error(_) = &resultado_act { return resultado_act }
+                if resultado_act.es_error() { return resultado_act }
             }
 
             // 3. El bucle terminó naturalmente. Nulo es el valor de toda
@@ -376,29 +394,36 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
             let resultado_try = evaluar_sentencia(bloque_try, entorno);
 
             // 2. Evaluar el resultado: ¿es un error capturable?
+            //    Capturamos tanto Error (errores internos) como Excepcion
+            //    (lanzados con throw). En ambos casos asignamos el valor
+            //    a la variable del catch.
             match resultado_try {
-                // 2a. Sí: interceptar el error.
+                // 2a. Sí: interceptar el error interno.
                 Objeto::Error(mensaje) => {
-                    // Crear un ámbito local aislado para el catch.
-                    // Esto evita que la variable del error (ej. `e`)
-                    // contamine el entorno exterior.
                     let mut entorno_catch =
                         Entorno::nuevo_local(entorno.clone());
 
-                    // Convertir el mensaje de Rust a una cadena de Argo
-                    // y asignarla al parámetro del catch.
-                    let objeto_error = Objeto::Cadena(mensaje);
+                    let valor_error = Objeto::Cadena(mensaje);
                     entorno_catch.asignar(
                         parametro_catch.clone(),
-                        objeto_error,
+                        valor_error,
                     );
 
-                    // Ejecutar el bloque de rescate en el entorno local.
-                    // Si el catch mismo produce un error, SE PROPAGA
-                    // (es un error del bloque catch, no del try).
                     evaluar_sentencia(bloque_catch, &mut entorno_catch)
                 }
-                // 2b. No es error: retornar el valor original sin tocar.
+                // 2b. Capturar excepción lanzada con `throw`.
+                //     Asignamos el valor original (no formateado a String)
+                //     a la variable del catch.
+                Objeto::Excepcion(valor) => {
+                    let mut entorno_catch =
+                        Entorno::nuevo_local(entorno.clone());
+                    entorno_catch.asignar(
+                        parametro_catch.clone(),
+                        *valor,
+                    );
+                    evaluar_sentencia(bloque_catch, &mut entorno_catch)
+                }
+                // 2c. No es error: retornar el valor original sin tocar.
                 //     Esto incluye Objeto::Retorno y Objeto::Nulo.
                 //     El catch no se ejecuta.
                 otro => otro,
@@ -415,7 +440,7 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
         // 4. Las declaraciones `let`/`const` retornan Nulo.
         Statement::DeclaracionVariable { nombre, valor, constante } => {
             let resultado = evaluar_expresion(valor, entorno);
-            if let Objeto::Error(_) = &resultado { return resultado }
+            if resultado.es_error() { return resultado }
             entorno.declarar(nombre.clone(), resultado, *constante);
             Objeto::Nulo
         }
@@ -431,7 +456,7 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
             let resultado = evaluar_expresion(valor, entorno);
 
             // 2. Short-circuit: si la evaluación falló, propagar error.
-            if let Objeto::Error(_) = &resultado { return resultado }
+            if resultado.es_error() { return resultado }
 
             // 3. Actualizar la variable en la cadena de ámbitos.
             //    entorno.actualizar() busca recursivamente (o itera con
@@ -501,6 +526,11 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
             // 4. Las declaraciones de función no producen valor.
             Objeto::Nulo
         }
+
+        Statement::DeclaracionStruct { nombre, campos } => {
+            entorno.asignar(nombre.clone(), Objeto::StructDef(campos.clone()));
+            Objeto::Nulo
+        }
     }
 }
 
@@ -530,7 +560,7 @@ fn evaluar_bloque(sentencias: &[Statement], entorno: &mut Entorno) -> Objeto {
         resultado = evaluar_sentencia(sentencia, &mut entorno_bloque);
 
         match &resultado {
-            Objeto::Error(_) | Objeto::Retorno(_) | Objeto::Break | Objeto::Continue => break,
+            Objeto::Error(_) | Objeto::Excepcion(_) | Objeto::Retorno(_) | Objeto::Break | Objeto::Continue => break,
             _ => {}
         }
     }
@@ -573,7 +603,7 @@ fn evaluar_sentencia_if(
 
     // 2. Short-circuit: si la condición produjo Error, propagarlo.
     //    match por referencia para no mover el Objeto.
-    if let Objeto::Error(_) = &resultado_condicion { return resultado_condicion }
+    if resultado_condicion.es_error() { return resultado_condicion }
 
     // 3. Determinar la truthyness de la condición.
     //    es_truthy toma &Objeto (préstamo inmutable). No consume
@@ -638,9 +668,9 @@ fn evaluar_sentencia_return(
         Some(expr) => {
             let resultado = evaluar_expresion(expr, entorno);
 
-            // Short-circuit: si la evaluación produjo Error,
-            // propagarlo inmediatamente en lugar de retornar.
-            if let Objeto::Error(_) = &resultado { return resultado }
+                // Short-circuit: si la evaluación produjo Error,
+                // propagarlo inmediatamente en lugar de retornar.
+                if resultado.es_error() { return resultado }
 
             resultado
         }
@@ -696,7 +726,7 @@ fn evaluar_sentencia_while(
 
         // 2. Short-circuit: si la condición es Error, propagar.
         //    Esto evita que el bucle continúe con un estado inválido.
-        if let Objeto::Error(_) = &evaluacion_condicion { return evaluacion_condicion }
+        if evaluacion_condicion.es_error() { return evaluacion_condicion }
 
         // 3. Decidir si continuar o romper el bucle.
         //    es_truthy evalúa el valor booleano implícito del Objeto.
@@ -724,7 +754,7 @@ fn evaluar_sentencia_while(
         //    Sin esta verificación, el bucle continuaría iterando
         //    ignorando el retorno, lo que sería incorrecto.
         match &resultado_cuerpo {
-            Objeto::Retorno(_) | Objeto::Error(_) => return resultado_cuerpo,
+            Objeto::Retorno(_) | Objeto::Error(_) | Objeto::Excepcion(_) => return resultado_cuerpo,
             // Break: señala que el cuerpo ejecutó break; detener el
             // bucle y retornar Nulo (no propagar el Break al exterior).
             Objeto::Break => break,
@@ -767,7 +797,7 @@ fn evaluar_sentencia_while(
 //   Retorno se propague más allá de la llamada a función: la
 //   envoltura Retorno es un mecanismo interno de propagación a
 //   través de sentencias anidadas; la llamada a función lo absorbe.
-fn evaluar_llamada_funcion(funcion: Objeto, argumentos: Vec<Objeto>) -> Objeto {
+pub fn evaluar_llamada_funcion(funcion: Objeto, argumentos: Vec<Objeto>) -> Objeto {
     // `funcion` se mueve al match; el brazo determina el tipo de
     // invocación: Funcion (definida por el usuario, necesita entorno)
     // o Nativa (built-in, llamada directa a fn pointer).
@@ -896,6 +926,9 @@ fn es_truthy(objeto: &Objeto) -> bool {
         // "negar" un error de forma significativa).
         Objeto::Error(_) => false,
 
+        // Excepcion: una excepción lanzada es falsa.
+        Objeto::Excepcion(_) => false,
+
         // Funcion: una función definida por el usuario es un valor
         // que se considera verdadero (como en JavaScript, donde una
         // función es truthy). Siempre que exista una función, puede
@@ -906,6 +939,8 @@ fn es_truthy(objeto: &Objeto) -> bool {
         // (es una función, al igual que Funcion). Independientemente
         // de qué función sea, su presencia es un valor verdadero.
         Objeto::Nativa(_) => true,
+
+        Objeto::StructDef(_) | Objeto::Instancia { .. } => true,
     }
 }
 
@@ -1244,6 +1279,54 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
 //     válido para Diccionario).
 //
 // Retorno: Objeto — el elemento clonado, Nulo si no existe, o Error.
+fn evaluar_patron(patron: &Patron, valor: &Objeto, entorno: &mut Entorno) -> bool {
+    match patron {
+        Patron::Wildcard => true,
+        Patron::Binding(nombre) => {
+            entorno.asignar(nombre.clone(), valor.clone());
+            true
+        }
+        Patron::Literal(expr) => match expr {
+            Expression::Entero(n) => matches!(valor, Objeto::Entero(v) if *v == *n),
+            Expression::Flotante(f) => matches!(valor, Objeto::Flotante(v) if *v == *f),
+            Expression::Booleano(b) => matches!(valor, Objeto::Booleano(v) if *v == *b),
+            Expression::Cadena(s) => matches!(valor, Objeto::Cadena(v) if *v == *s),
+            _ => false,
+        },
+        Patron::Struct(nombre, campos) => {
+            if let Objeto::Instancia { nombre: n, campos: c } = valor {
+                if *nombre != *n { return false; }
+                for (campo, subpatron) in campos {
+                    match c.get(campo) {
+                        Some(valor_campo) => {
+                            if !evaluar_patron(subpatron, valor_campo, entorno) {
+                                return false;
+                            }
+                        }
+                        None => return false,
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        }
+        Patron::Arreglo(elementos) => {
+            if let Objeto::Arreglo(arr) = valor {
+                if arr.len() != elementos.len() { return false; }
+                for (i, subpatron) in elementos.iter().enumerate() {
+                    if !evaluar_patron(subpatron, &arr[i], entorno) {
+                        return false;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
 fn evaluar_acceso_indice(estructura: Objeto, indice: Objeto) -> Objeto {
     evaluar_acceso_indice_con_profundidad(estructura, indice, 0)
 }
@@ -1333,6 +1416,24 @@ fn evaluar_acceso_indice_con_profundidad(
         (Objeto::Buffer(_), _) => {
             Objeto::Error(
                 "El índice debe ser un entero".to_string()
+            )
+        }
+
+        // Acceso a campo de struct: `p.x`
+        (Objeto::Instancia { nombre: _, campos }, Objeto::Cadena(campo)) => {
+            match campos.get(&campo) {
+                Some(valor) => valor.clone(),
+                None => Objeto::Error(format!(
+                    "El struct no tiene el campo '{}'", campo
+                )),
+            }
+        }
+        (Objeto::StructDef(_), _) => Objeto::Error(
+            "No se puede acceder por índice a una definición de struct; use la instancia".to_string()
+        ),
+        (Objeto::Instancia { .. }, _) => {
+            Objeto::Error(
+                "El índice debe ser una cadena (nombre del campo)".to_string()
             )
         }
 
@@ -1429,7 +1530,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
         } => {
             // 1. Evaluar el lado izquierdo. Si es Error, propagar.
             let eval_izquierda = evaluar_expresion(izquierda, entorno);
-            if let Objeto::Error(_) = &eval_izquierda { return eval_izquierda }
+            if eval_izquierda.es_error() { return eval_izquierda }
 
             // Short-circuit para && y ||: evaluar derecho solo si es necesario.
             if *operador == Token::And {
@@ -1437,7 +1538,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                     return eval_izquierda;
                 }
                 let eval_derecha = evaluar_expresion(derecha, entorno);
-                if let Objeto::Error(_) = &eval_derecha { return eval_derecha }
+                if eval_derecha.es_error() { return eval_derecha }
                 return eval_derecha;
             }
             if *operador == Token::Or {
@@ -1445,13 +1546,13 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                     return eval_izquierda;
                 }
                 let eval_derecha = evaluar_expresion(derecha, entorno);
-                if let Objeto::Error(_) = &eval_derecha { return eval_derecha }
+                if eval_derecha.es_error() { return eval_derecha }
                 return eval_derecha;
             }
 
             // 2. Evaluar el lado derecho. Si es Error, propagar.
             let eval_derecha = evaluar_expresion(derecha, entorno);
-            if let Objeto::Error(_) = &eval_derecha { return eval_derecha }
+            if eval_derecha.es_error() { return eval_derecha }
 
             // 3. Convertir el Token del operador a &str para el
             //    dispatcher. Token no implementa Display, por lo que
@@ -1503,8 +1604,8 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             let eval_derecha = evaluar_expresion(derecha, entorno);
 
             // 2. Short-circuit: si el operando produjo Error,
-            //    propagarlo inmediatamente sin aplicar el operador.
-            if let Objeto::Error(_) = &eval_derecha { return eval_derecha }
+                //    propagarlo inmediatamente sin aplicar el operador.
+            if eval_derecha.es_error() { return eval_derecha }
 
             // 3. Convertir el Token a un &str legible para el
             //    dispatcher. Token deriva Clone, pero no Display;
@@ -1545,7 +1646,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             let eval_funcion = evaluar_expresion(funcion, entorno);
 
             // 2. Short-circuit: si evaluar la función falló, propagar.
-            if let Objeto::Error(_) = &eval_funcion { return eval_funcion }
+            if eval_funcion.es_error() { return eval_funcion }
 
             // 3. Verificar que el resultado sea invocable.
             //    Puede ser Funcion (definida por el usuario) o Nativa
@@ -1568,7 +1669,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
 
                 // Short-circuit por argumento: si un solo argumento
                 // produce Error, toda la llamada falla.
-                if let Objeto::Error(_) = &eval_arg { return eval_arg }
+                if eval_arg.es_error() { return eval_arg }
 
                 argumentos_evaluados.push(eval_arg);
             }
@@ -1592,7 +1693,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                 let eval = evaluar_expresion(expr, entorno);
                 // Short-circuit: si un elemento es Error, toda la
                 // evaluación del arreglo falla.
-                if let Objeto::Error(_) = &eval { return eval }
+                if eval.es_error() { return eval }
                 elementos_evaluados.push(eval);
             }
             // Envolver el Vec en Objeto::Arreglo. La ownership del Vec
@@ -1614,7 +1715,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             for (clave_expr, valor_expr) in pares {
                 // 1. Evaluar la expresión de la clave.
                 let clave_eval = evaluar_expresion(clave_expr, entorno);
-                if let Objeto::Error(_) = &clave_eval { return clave_eval }
+                if clave_eval.es_error() { return clave_eval }
 
                 // 2. Convertir a LlaveHash. Si falla, propagar error.
                 let llave = match clave_eval.tomar_llave_hash() {
@@ -1624,7 +1725,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
 
                 // 3. Evaluar la expresión del valor.
                 let valor = evaluar_expresion(valor_expr, entorno);
-                if let Objeto::Error(_) = &valor { return valor }
+                if valor.es_error() { return valor }
 
                 // 4. Insertar en el HashMap. Si la clave ya existe, se
                 //    sobrescribe (comportamiento estándar en lenguajes
@@ -1642,11 +1743,11 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
         Expression::AccesoIndice { izquierda, indice } => {
             // 1. Evaluar la expresión izquierda (el contenedor).
             let eval_izquierda = evaluar_expresion(izquierda, entorno);
-            if let Objeto::Error(_) = &eval_izquierda { return eval_izquierda }
+            if eval_izquierda.es_error() { return eval_izquierda }
 
             // 2. Evaluar la expresión del índice.
             let eval_indice = evaluar_expresion(indice, entorno);
-            if let Objeto::Error(_) = &eval_indice { return eval_indice }
+            if eval_indice.es_error() { return eval_indice }
 
             // 3. Delegar en evaluar_acceso_indice, que consume la
             //    ownership de ambos objetos y retorna el resultado.
@@ -1670,6 +1771,49 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                 cuerpo: cuerpo.clone(),
                 entorno: entorno_capturado,
             }
+        }
+
+        // Expression::Match { expr, brazos } —
+        // Pattern matching: `match (valor) { patron => expr, ... }`
+        Expression::Match { expr, brazos } => {
+            let valor = evaluar_expresion(expr, entorno);
+            if valor.es_error() { return valor }
+            let mut resultado = Objeto::Nulo;
+            for (patron, expr_brazo) in brazos {
+                let mut entorno_match = entorno.clone();
+                if evaluar_patron(patron, &valor, &mut entorno_match) {
+                    resultado = evaluar_expresion(expr_brazo, &mut entorno_match);
+                    if resultado.es_error() { return resultado }
+                    break;
+                }
+            }
+            resultado
+        }
+
+        // Expression::StructInstancia { nombre, valores } —
+        // Instanciación de struct: `Punto { x: 1, y: 2 }`
+        // 1. Busca el StructDef en el entorno (por `nombre`).
+        // 2. Evalúa cada expresión de valor en orden.
+        // 3. Construye un HashMap<String, Objeto> con los campos.
+        Expression::StructInstancia { nombre, valores } => {
+            let mut campos = HashMap::new();
+            for (campo, expr) in valores {
+                let valor = evaluar_expresion(expr, entorno);
+                if valor.es_error() { return valor }
+                campos.insert(campo.clone(), valor);
+            }
+            Objeto::Instancia {
+                nombre: nombre.clone(),
+                campos,
+            }
+        }
+
+        // Expression::Throw(expr) — Lanzar una excepción.
+        // Evalúa la expresión y envuelve el resultado en Objeto::Excepcion.
+        Expression::Throw(expr) => {
+            let valor = evaluar_expresion(expr, entorno);
+            if valor.es_error() { return valor }
+            Objeto::Excepcion(Box::new(valor))
         }
 
         // Expression::Import(ruta) — Importación de módulo.
@@ -1703,7 +1847,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             let resultado_modulo = evaluar_programa(
                 &programa_modulo, &mut entorno_modulo,
             );
-            if let Objeto::Error(_) = &resultado_modulo { return resultado_modulo }
+            if resultado_modulo.es_error() { return resultado_modulo }
 
             // f. Extraer el HashMap interno del entorno del módulo
             //    para construir un diccionario de Argo. Recorremos

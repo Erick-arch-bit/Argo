@@ -6,7 +6,7 @@
 // para el parseo de expresiones. El parser consume tokens del
 // Lexer secuencialmente y produce un AST (Programa → Statement → Expression).
 
-use crate::ast::{Expression, Programa, Statement};
+use crate::ast::{Expression, Patron, Programa, Statement};
 use crate::lexer::token::Token;
 use crate::lexer::Lexer;
 
@@ -259,6 +259,7 @@ impl<'a> Parser<'a> {
             Token::Break => self.parsear_sentencia_break(),
             Token::Continue => self.parsear_sentencia_continue(),
             Token::Fn => self.parsear_declaracion_funcion(),
+            Token::Struct => self.parsear_declaracion_struct(),
             // Expresiones como sentencias (ej. llamadas a función foo())
             Token::Identificador(_)
             | Token::Entero(_)
@@ -270,7 +271,10 @@ impl<'a> Parser<'a> {
             | Token::CorcheteAbierto
             | Token::Suma
             | Token::Resta
-            | Token::Not => self.parsear_expresion_como_sentencia(),
+            | Token::Not
+            | Token::Throw
+            | Token::Match
+            | Token::Import => self.parsear_expresion_como_sentencia(),
             // Expansión futura: etc.
             // Cualquier token que no inicie sentencia se ignora.
             _ => None,
@@ -966,6 +970,59 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parsear_declaracion_struct(&mut self) -> Option<Statement> {
+        self.avanzar();
+        let nombre = match self.avanzar() {
+            Token::Identificador(n) => n,
+            _ => {
+                self.errores.push(self.error_ubicacion(
+                    "Error de sintaxis: se esperaba el nombre del struct".to_string(),
+                ));
+                return None;
+            }
+        };
+        if self.token_actual != Token::LlaveAbierta {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba '{' después del nombre del struct".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+
+        let mut campos = Vec::new();
+        if self.token_actual != Token::LlaveCerrada {
+            loop {
+                match self.avanzar() {
+                    Token::Identificador(c) => campos.push(c),
+                    _ => {
+                        self.errores.push(self.error_ubicacion(
+                            "Error de sintaxis: se esperaba un nombre de campo".to_string(),
+                        ));
+                        return None;
+                    }
+                }
+                if self.token_actual == Token::Coma {
+                    self.avanzar();
+                    if self.token_actual == Token::LlaveCerrada {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if self.token_actual != Token::LlaveCerrada {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba '}' para cerrar la lista de campos".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+
+        Some(Statement::DeclaracionStruct { nombre, campos })
+    }
+
     // -----------------------------------------------------------------------
     // Núcleo del Algoritmo de Pratt (Top-Down Operator Precedence)
     // -----------------------------------------------------------------------
@@ -1015,7 +1072,7 @@ impl<'a> Parser<'a> {
         // prefix falla, retornando None inmediatamente. Esto hace que
         // parsear_expresion retorne None y el llamante maneje el error.
         let mut izquierda = match &self.token_actual {
-            Token::Identificador(_) => self.parsear_identificador()?,
+            Token::Identificador(_) => self.parsear_prefijo_identificador()?,
             Token::Entero(_) => self.parsear_entero()?,
             Token::Flotante(_) => self.parsear_flotante()?,
             Token::True | Token::False => self.parsear_booleano()?,
@@ -1026,6 +1083,10 @@ impl<'a> Parser<'a> {
             Token::Suma | Token::Resta | Token::Not => self.parsear_unario()?,
             // `fn`: expresión de función anónima (fn(params) { cuerpo })
             Token::Fn => self.parsear_fn_expr()?,
+            // `match`: expresión de pattern matching.
+            Token::Match => self.parsear_match()?,
+            // `throw`: lanzar una excepción con un valor arbitrario.
+            Token::Throw => self.parsear_throw()?,
             // `import`: expresión de importación de módulo.
             Token::Import => self.parsear_import()?,
             // Si el token actual no puede iniciar una expresión, se
@@ -1093,11 +1154,242 @@ impl<'a> Parser<'a> {
     /// - Se usa `if let` para extraer el String del Token por referencia.
     /// - `n.clone()` crea una copia heap del nombre. Es necesario porque
     ///   `self.avanzar()` muta el parser tras extraer el valor.
-    fn parsear_identificador(&mut self) -> Option<Expression> {
-        match self.avanzar() {
-            Token::Identificador(nombre) => Some(Expression::Identificador(nombre)),
-            _ => None,
+    fn parsear_match(&mut self) -> Option<Expression> {
+        self.avanzar();
+        if self.token_actual != Token::ParentesisAbierto {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba '(' después de 'match'".to_string(),
+            ));
+            return None;
         }
+        self.avanzar();
+        let expr = self.parsear_expresion(Precedencia::Menor)?;
+        if self.token_actual != Token::ParentesisCerrado {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba ')' después de la expresión en match".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+        if self.token_actual != Token::LlaveAbierta {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba '{' para los brazos del match".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+
+        let mut brazos = Vec::new();
+        if self.token_actual != Token::LlaveCerrada {
+            loop {
+                let patron = self.parsear_patron()?;
+                if self.token_actual != Token::Flecha {
+                    self.errores.push(self.error_ubicacion(
+                        "Error de sintaxis: se esperaba '=>' después del patrón".to_string(),
+                    ));
+                    return None;
+                }
+                self.avanzar();
+                let valor = self.parsear_expresion(Precedencia::Menor)?;
+                brazos.push((patron, valor));
+                if self.token_actual == Token::Coma {
+                    self.avanzar();
+                    if self.token_actual == Token::LlaveCerrada {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if self.token_actual != Token::LlaveCerrada {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba '}' para cerrar el match".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+        Some(Expression::Match {
+            expr: Box::new(expr),
+            brazos,
+        })
+    }
+
+    fn parsear_patron(&mut self) -> Option<Patron> {
+        match &self.token_actual {
+            Token::Identificador(n) if n == "_" => {
+                self.avanzar();
+                Some(Patron::Wildcard)
+            }
+            Token::Identificador(_) => {
+                let nombre = match self.avanzar() {
+                    Token::Identificador(n) => n,
+                    _ => return None,
+                };
+                if self.token_actual == Token::LlaveAbierta {
+                    self.parsear_patron_struct(nombre)
+                } else {
+                    Some(Patron::Binding(nombre))
+                }
+            }
+            Token::CorcheteAbierto => {
+                self.avanzar();
+                let mut elementos = Vec::new();
+                if self.token_actual != Token::CorcheteCerrado {
+                    loop {
+                        elementos.push(self.parsear_patron()?);
+                        if self.token_actual == Token::Coma {
+                            self.avanzar();
+                            if self.token_actual == Token::CorcheteCerrado {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                if self.token_actual != Token::CorcheteCerrado {
+                    self.errores.push(self.error_ubicacion(
+                        "Error de sintaxis: se esperaba ']' en patrón de arreglo".to_string(),
+                    ));
+                    return None;
+                }
+                self.avanzar();
+                Some(Patron::Arreglo(elementos))
+            }
+            Token::Entero(v) => {
+                let val = *v;
+                self.avanzar();
+                Some(Patron::Literal(Expression::Entero(val)))
+            }
+            Token::Flotante(v) => {
+                let val = *v;
+                self.avanzar();
+                Some(Patron::Literal(Expression::Flotante(val)))
+            }
+            Token::True => {
+                self.avanzar();
+                Some(Patron::Literal(Expression::Booleano(true)))
+            }
+            Token::False => {
+                self.avanzar();
+                Some(Patron::Literal(Expression::Booleano(false)))
+            }
+            Token::Cadena(_) => {
+                match self.avanzar() {
+                    Token::Cadena(s) => Some(Patron::Literal(Expression::Cadena(s))),
+                    _ => unreachable!(),
+                }
+            }
+            _ => {
+                self.errores.push(self.error_ubicacion(
+                    "Error de sintaxis: patrón inválido".to_string(),
+                ));
+                None
+            }
+        }
+    }
+
+    fn parsear_patron_struct(&mut self, nombre: String) -> Option<Patron> {
+        self.avanzar();
+        let mut campos = Vec::new();
+        if self.token_actual != Token::LlaveCerrada {
+            loop {
+                let campo = match self.avanzar() {
+                    Token::Identificador(c) => c,
+                    _ => {
+                        self.errores.push(self.error_ubicacion(
+                            "Error de sintaxis: se esperaba nombre de campo en patrón".to_string(),
+                        ));
+                        return None;
+                    }
+                };
+                if self.token_actual != Token::DosPuntos {
+                    self.errores.push(self.error_ubicacion(
+                        "Error de sintaxis: se esperaba ':' después del campo".to_string(),
+                    ));
+                    return None;
+                }
+                self.avanzar();
+                let subpatron = self.parsear_patron()?;
+                campos.push((campo, Box::new(subpatron)));
+                if self.token_actual == Token::Coma {
+                    self.avanzar();
+                    if self.token_actual == Token::LlaveCerrada {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+        if self.token_actual != Token::LlaveCerrada {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba '}' en patrón de struct".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+        Some(Patron::Struct(nombre, campos))
+    }
+
+    fn parsear_prefijo_identificador(&mut self) -> Option<Expression> {
+        let nombre = match self.avanzar() {
+            Token::Identificador(n) => n,
+            _ => return None,
+        };
+        if self.token_actual == Token::LlaveAbierta {
+            self.parsear_instancia_struct(nombre)
+        } else {
+            Some(Expression::Identificador(nombre))
+        }
+    }
+
+    fn parsear_instancia_struct(&mut self, nombre: String) -> Option<Expression> {
+        self.avanzar();
+        let mut valores = Vec::new();
+        if self.token_actual != Token::LlaveCerrada {
+            loop {
+                let campo = match self.avanzar() {
+                    Token::Identificador(c) => c,
+                    _ => {
+                        self.errores.push(self.error_ubicacion(
+                            "Error de sintaxis: se esperaba un nombre de campo"
+                                .to_string(),
+                        ));
+                        return None;
+                    }
+                };
+                if self.token_actual != Token::DosPuntos {
+                    self.errores.push(self.error_ubicacion(
+                        "Error de sintaxis: se esperaba ':' después del nombre del campo"
+                            .to_string(),
+                    ));
+                    return None;
+                }
+                self.avanzar();
+                let valor = self.parsear_expresion(Precedencia::Menor)?;
+                valores.push((campo, valor));
+                if self.token_actual == Token::Coma {
+                    self.avanzar();
+                    if self.token_actual == Token::LlaveCerrada {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+        if self.token_actual != Token::LlaveCerrada {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba '}' para cerrar la instancia del struct"
+                    .to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+        Some(Expression::StructInstancia { nombre, valores })
     }
 
     /// Parsea un entero: `Token::Entero(v)` → Expression::Entero(v)
@@ -1558,6 +1850,14 @@ impl<'a> Parser<'a> {
     }
 
     // -----------------------------------------------------------------------
+    // parsear_throw — Parsea una expresión throw: `throw <expr>`
+    // -----------------------------------------------------------------------
+    fn parsear_throw(&mut self) -> Option<Expression> {
+        self.avanzar();
+        let expr = self.parsear_expresion(Precedencia::Menor)?;
+        Some(Expression::Throw(Box::new(expr)))
+    }
+
     // parsear_import — Parsea una expresión de importación: `import "ruta"`
     // -----------------------------------------------------------------------
     //

@@ -16,9 +16,12 @@ fn tipo_objeto(o: &Objeto) -> &'static str {
         Objeto::Diccionario(_) => "diccionario",
         Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
         Objeto::Retorno(_) => "retorno",
+        Objeto::StructDef(_) => "struct_def",
+        Objeto::Instancia { .. } => "instancia",
         Objeto::Break => "break",
         Objeto::Continue => "continue",
         Objeto::Error(_) => "error",
+        Objeto::Excepcion(_) => "excepcion",
     }
 }
 

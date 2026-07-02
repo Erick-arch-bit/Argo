@@ -40,6 +40,10 @@ pub enum Statement {
         parametros: Vec<String>,
         cuerpo: Box<Statement>,
     },
+    DeclaracionStruct {
+        nombre: String,
+        campos: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -83,4 +87,30 @@ pub enum Expression {
     /// Evalúa el archivo en un entorno aislado y retorna un diccionario
     /// con las variables globales exportadas.
     Import(String),
+
+    /// Match expression: `match (expr) { Patron => Expr, ... }`
+    Match {
+        expr: Box<Expression>,
+        brazos: Vec<(Patron, Expression)>,
+    },
+
+    /// Instancia de struct: `Punto { x: 1, y: 2 }`
+    StructInstancia {
+        nombre: String,
+        valores: Vec<(String, Expression)>,
+    },
+
+    /// Throw expression: `throw <expr>`
+    /// Evalúa la expresión y retorna un error (excepción) con ese valor.
+    Throw(Box<Expression>),
+}
+
+/// Patrón para match: literales, wildcard `_`, binding, struct/array
+#[derive(Debug, Clone)]
+pub enum Patron {
+    Literal(Expression),
+    Wildcard,
+    Binding(String),
+    Struct(String, Vec<(String, Box<Patron>)>),
+    Arreglo(Vec<Patron>),
 }

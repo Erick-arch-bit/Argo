@@ -42,9 +42,12 @@ fn validar_ruta(args: &[Objeto], idx: usize) -> Result<String, Objeto> {
                 Objeto::Diccionario(_) => "diccionario",
                 Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
                 Objeto::Retorno(_) => "retorno",
+                Objeto::StructDef(_) => "struct_def",
+                Objeto::Instancia { .. } => "instancia",
                 Objeto::Break => "break",
                 Objeto::Continue => "continue",
                 Objeto::Error(_) => "error",
+                Objeto::Excepcion(_) => "excepcion",
             }
         ))),
         None => Err(Objeto::Error(format!(

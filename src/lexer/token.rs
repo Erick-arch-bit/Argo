@@ -19,6 +19,9 @@ pub enum Token {
     Try,
     Catch,
     Import,
+    Struct,
+    Match,
+    Throw,
     Async,
     Await,
 

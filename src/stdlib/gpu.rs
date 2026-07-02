@@ -20,9 +20,12 @@ fn extraer_entero(args: &[Objeto], idx: usize, nombre: &str) -> Result<i64, Obje
                 Objeto::Diccionario(_) => "diccionario",
                 Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
                 Objeto::Retorno(_) => "retorno",
+                Objeto::StructDef(_) => "struct_def",
+                Objeto::Instancia { .. } => "instancia",
                 Objeto::Break => "break",
                 Objeto::Continue => "continue",
                 Objeto::Error(_) => "error",
+                Objeto::Excepcion(_) => "excepcion",
             }
         ))),
         None => Err(Objeto::Error(format!(
@@ -42,8 +45,10 @@ fn extraer_framebuffer(args: &[Objeto]) -> Result<(Vec<u8>, usize, usize), Objet
                 Objeto::Nulo => "nulo", Objeto::Buffer(_) => "buffer",
                 Objeto::Arreglo(_) => "arreglo", Objeto::Diccionario(_) => "diccionario",
                 Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
-                Objeto::Retorno(_) => "retorno", Objeto::Break => "break",
+                Objeto::Retorno(_) => "retorno", Objeto::StructDef(_) => "struct_def",
+                Objeto::Instancia { .. } => "instancia", Objeto::Break => "break",
                 Objeto::Continue => "continue", Objeto::Error(_) => "error",
+                Objeto::Excepcion(_) => "excepcion",
             }
         ))),
         None => return Err(Objeto::Error("gpu: falta el argumento framebuffer".to_string())),
@@ -59,8 +64,10 @@ fn extraer_framebuffer(args: &[Objeto]) -> Result<(Vec<u8>, usize, usize), Objet
                 Objeto::Nulo => "nulo", Objeto::Buffer(_) => "buffer",
                 Objeto::Arreglo(_) => "arreglo", Objeto::Diccionario(_) => "diccionario",
                 Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
-                Objeto::Retorno(_) => "retorno", Objeto::Break => "break",
+                Objeto::Retorno(_) => "retorno", Objeto::StructDef(_) => "struct_def",
+                Objeto::Instancia { .. } => "instancia", Objeto::Break => "break",
                 Objeto::Continue => "continue", Objeto::Error(_) => "error",
+                Objeto::Excepcion(_) => "excepcion",
             }
         ))),
         None => return Err(Objeto::Error("gpu: framebuffer no contiene 'buffer'".to_string())),
@@ -300,8 +307,10 @@ pub fn crear_modulo() -> Objeto {
                     Objeto::Nulo => "nulo", Objeto::Buffer(_) => "buffer",
                     Objeto::Arreglo(_) => "arreglo", Objeto::Diccionario(_) => "diccionario",
                     Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
-                    Objeto::Retorno(_) => "retorno", Objeto::Break => "break",
+                    Objeto::Retorno(_) => "retorno", Objeto::StructDef(_) => "struct_def",
+                    Objeto::Instancia { .. } => "instancia", Objeto::Break => "break",
                     Objeto::Continue => "continue", Objeto::Error(_) => "error",
+                    Objeto::Excepcion(_) => "excepcion",
                 }
             )),
         };

@@ -12,7 +12,10 @@ mod stdlib;
 
 use std::io::{self, Write};
 use std::env;
+use std::collections::HashMap;
 use std::fs;
+use std::hash::{Hash, Hasher};
+use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
@@ -287,16 +290,18 @@ fn ejecutar_proyecto() {
 // sistema de archivos.
 // ===========================================================================
 fn ejecutar_archivo(ruta: &str) {
-    let contenido = match fs::read_to_string(ruta) {
+    ejecutar_desde_str(ruta, &match fs::read_to_string(ruta) {
         Ok(c) => c,
         Err(_) => {
             println!("\x1b[91mError:\x1b[0m No se pudo leer el archivo '{}'", ruta);
             return;
         }
-    };
+    });
+}
 
+fn ejecutar_desde_str(ruta: &str, contenido: &str) -> bool {
     let mut entorno = configurar_entorno_global();
-    let lexer = Lexer::nuevo(&contenido);
+    let lexer = Lexer::nuevo(contenido);
     let mut parser = Parser::nuevo(lexer);
     let programa: Programa = parser.parsear_programa();
 
@@ -304,13 +309,68 @@ fn ejecutar_archivo(ruta: &str) {
         for error in &parser.errores {
             println!("\x1b[91merror de sintaxis\x1b[0m: {}", error);
         }
-        return;
+        return false;
     }
 
     let resultado = evaluar_programa(&programa, &mut entorno);
 
-    if matches!(resultado, Objeto::Error(_)) {
-        println!("{}", resultado);
+    if matches!(resultado, Objeto::Error(_) | Objeto::Excepcion(_)) {
+        println!("  {}: {}", ruta, resultado);
+        false
+    } else {
+        true
+    }
+}
+
+// ===========================================================================
+// ejecutar_pruebas — Busca y ejecuta archivos *.test.argo, reporta resumen
+// ===========================================================================
+fn ejecutar_pruebas() {
+    let mut total_pasaron = 0usize;
+    let mut total_fallaron = 0usize;
+
+    let dir = Path::new(".");
+    let Ok(entries) = fs::read_dir(dir) else {
+        println!("\x1b[91mError:\x1b[0m No se pudo leer el directorio actual.");
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("argo") {
+            continue;
+        }
+        let nombre = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !nombre.contains(".test.") {
+            continue;
+        }
+
+        let contenido = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        print!("  probando {} ... ", nombre);
+        io::stdout().flush().ok();
+
+        let pasaron = ejecutar_desde_str(nombre, &contenido);
+        if pasaron {
+            println!("\x1b[32mOK\x1b[0m");
+            total_pasaron += 1;
+        } else {
+            total_fallaron += 1;
+        }
+    }
+
+    let total = total_pasaron + total_fallaron;
+    println!();
+    if total == 0 {
+        println!("  No se encontraron archivos *.test.argo");
+    } else {
+        println!(
+            "  Resultado: {} pasaron, {} fallaron, {} total",
+            total_pasaron, total_fallaron, total
+        );
     }
 }
 
@@ -364,6 +424,118 @@ fn iniciar_repl() {
 }
 
 // ===========================================================================
+// ejecutar_install — Lee argo.toml, descarga dependencias, genera argo.mod/lock
+// ===========================================================================
+fn ejecutar_install() {
+    let contenido = match fs::read_to_string("argo.toml") {
+        Ok(c) => c,
+        Err(_) => {
+            println!("\x1b[91mError:\x1b[0m No se encontró 'argo.toml' en el directorio actual.");
+            return;
+        }
+    };
+
+    let mut dependencias = HashMap::new();
+    let mut en_deps = false;
+
+    for linea in contenido.lines() {
+        let linea = linea.trim();
+        if linea.starts_with("[dependencies]") {
+            en_deps = true;
+            continue;
+        }
+        if en_deps {
+            if linea.starts_with('[') {
+                break;
+            }
+            if linea.is_empty() || linea.starts_with('#') {
+                continue;
+            }
+            if let Some((clave, valor)) = linea.split_once('=') {
+                let clave = clave.trim().to_string();
+                let valor = valor.trim().trim_matches('"').to_string();
+                if !clave.is_empty() && !valor.is_empty() {
+                    dependencias.insert(clave, valor);
+                }
+            }
+        }
+    }
+
+    if dependencias.is_empty() {
+        println!("  No se encontraron dependencias en argo.toml.");
+        return;
+    }
+
+    // Descargar cada dependencia
+    let dir_cache = std::path::PathBuf::from(
+        std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
+    ).join(".argo").join("cache");
+    fs::create_dir_all(&dir_cache).ok();
+
+    for (alias, url) in &dependencias {
+        print!("  descargando {} de {} ... ", alias, url);
+        io::stdout().flush().ok();
+
+        match evaluator::modulo::fetch_url(url) {
+            Ok(texto) => {
+                // Guardar en proyecto local
+                let dir_deps = Path::new("deps");
+                fs::create_dir_all(dir_deps).ok();
+                let ruta_destino = dir_deps.join(format!("{}.argo", alias));
+                if let Err(e) = fs::write(&ruta_destino, &texto) {
+                    println!("\x1b[91mError\x1b[0m al escribir {}: {}", ruta_destino.display(), e);
+                    continue;
+                }
+                println!("\x1b[32mOK\x1b[0m");
+            }
+            Err(e) => {
+                println!("\x1b[91mError\x1b[0m: {}", e);
+            }
+        }
+    }
+
+    // Generar/actualizar argo.mod (import map)
+    {
+        let mut lineas = String::new();
+        for (alias, _url) in &dependencias {
+            lineas.push_str(&format!("{} = {}.argo\n", alias, alias));
+        }
+        if let Err(e) = fs::write("argo.mod", &lineas) {
+            println!("\x1b[91mError\x1b[0m al escribir argo.mod: {}", e);
+        } else {
+            println!("  argo.mod actualizado");
+        }
+    }
+
+    // Generar argo.lock
+    {
+        let mut lineas = String::new();
+        lineas.push_str("# argo.lock — generado automáticamente\n");
+        for (alias, url) in &dependencias {
+            let dir_deps = Path::new("deps");
+            let ruta_destino = dir_deps.join(format!("{}.argo", alias));
+            let checksum = fs::read(&ruta_destino)
+                .ok()
+                .map(|b| {
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    b.hash(&mut h);
+                    format!("{:x}", h.finish())
+                })
+                .unwrap_or_else(|| "unknown".to_string());
+            lineas.push_str(&format!("{} = {}#{}", alias, url, checksum));
+            lineas.push('\n');
+        }
+        if let Err(e) = fs::write("argo.lock", &lineas) {
+            println!("\x1b[91mError\x1b[0m al escribir argo.lock: {}", e);
+        } else {
+            println!("  argo.lock generado");
+        }
+    }
+
+    println!("  \x1b[32m✔ Instalación completada.\x1b[0m");
+}
+
+// ===========================================================================
 // main — Punto de entrada del binario
 // ===========================================================================
 // Enruta los comandos según el primer argumento:
@@ -401,6 +573,12 @@ fn main() {
                 println!("Escribe 'exit' para salir.\n");
                 iniciar_repl();
             }
+            "test" => {
+                ejecutar_pruebas();
+            }
+            "install" => {
+                ejecutar_install();
+            }
             // Si no es un comando reservado, tratar como ruta de archivo
             _ => {
                 ejecutar_archivo(&args[1]);
@@ -412,9 +590,11 @@ fn main() {
             println!("Uso: argo [comando|ruta]");
             println!();
             println!("  {b}{lg}Comandos:{r}");
-            println!("    {lg}init{r}   Inicializar un nuevo proyecto Argo");
-            println!("    {lg}run{r}    Ejecutar el proyecto actual");
-            println!("    {lg}repl{r}   Iniciar el REPL interactivo");
+            println!("    {lg}init{r}    Inicializar un nuevo proyecto Argo");
+            println!("    {lg}run{r}     Ejecutar el proyecto actual");
+            println!("    {lg}repl{r}    Iniciar el REPL interactivo");
+            println!("    {lg}test{r}    Ejecutar pruebas (*.test.argo)");
+            println!("    {lg}install{r} Instalar dependencias desde argo.toml");
             println!();
             println!("  {b}{lg}Tambien:{r}");
             println!("    {lg}argo <archivo.argo>{r}  Ejecutar un script directamente");

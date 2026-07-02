@@ -23,9 +23,12 @@ fn tipo_objeto(o: &Objeto) -> &'static str {
         Objeto::Diccionario(_) => "diccionario",
         Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
         Objeto::Retorno(_) => "retorno",
+        Objeto::StructDef(_) => "struct_def",
+        Objeto::Instancia { .. } => "instancia",
         Objeto::Break => "break",
         Objeto::Continue => "continue",
         Objeto::Error(_) => "error",
+        Objeto::Excepcion(_) => "excepcion",
     }
 }
 
@@ -74,7 +77,7 @@ pub fn crear_modulo() -> Objeto {
 
                 let resultado = evaluar_programa(&programa, entorno);
 
-                if matches!(resultado, Objeto::Error(_)) {
+                if matches!(resultado, Objeto::Error(_) | Objeto::Excepcion(_)) {
                     eprintln!("[hilo] error en ejecución: {}", resultado);
                 }
             }));

@@ -26,7 +26,7 @@ use crate::parser::Parser;
 // ---------------------------------------------------------------------------
 // fetch_url — Descarga segura vía curl
 // ---------------------------------------------------------------------------
-fn fetch_url(url: &str) -> Result<String, String> {
+pub fn fetch_url(url: &str) -> Result<String, String> {
     let output = Command::new("curl")
         .arg("-sSL")
         .arg(url)

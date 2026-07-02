@@ -112,6 +112,13 @@ pub enum Objeto {
     // Esta variante permite manejar errores sin usar panic! ni unwrap().
     Error(String),
 
+    // Excepcion(Box<Objeto>) — Representa un valor lanzado con `throw`.
+    // A diferencia de Error (que siempre es un String), Excepción puede
+    // contener cualquier tipo de Objeto (números, cadenas, arreglos...).
+    // El try/catch captura esta variante y asigna el valor interno
+    // directamente a la variable del catch (sin formatearlo a String).
+    Excepcion(Box<Objeto>),
+
     // Nativa(fn(Vec<Objeto>) -> Objeto) — Función nativa del sistema
     // (built-in) implementada directamente en Rust. Almacena un puntero
     // a función (fn pointer, 8 bytes en 64 bits). Los fn pointers son
@@ -167,6 +174,18 @@ pub enum Objeto {
     // bytes sin codificación de cadena. El acceso de solo lectura por índice
     // está soportado nativamente (evaluar_acceso_indice).
     Buffer(Vec<u8>),
+
+    // StructDef — Definición de un struct (template de campos)
+    // Se almacena en el entorno global cuando se declara `struct Punto { x, y }`.
+    StructDef(Vec<String>),
+
+    // Instancia — Valor de un struct definido por el usuario
+    // Almacena el nombre del tipo y un mapa de campos nombre → valor.
+    // Los campos se validan en acceso: si el campo no existe, error.
+    Instancia {
+        nombre: String,
+        campos: HashMap<String, Objeto>,
+    },
 
     // Funcion { parametros, cuerpo, entorno } — Valor de función
     // definida por el usuario (cierre léxico / closure).
@@ -229,11 +248,16 @@ impl Objeto {
                 Err("Las claves de diccionario no pueden ser funciones".to_string())
             }
             Objeto::Buffer(_) => Err("Las claves de diccionario no pueden ser buffers".to_string()),
+            Objeto::StructDef(_) => Err("Las claves de diccionario no pueden ser definiciones de struct".to_string()),
+            Objeto::Instancia { .. } => Err("Las claves de diccionario no pueden ser instancias de struct".to_string()),
             Objeto::Nulo => Err("Las claves de diccionario no pueden ser nulo".to_string()),
             Objeto::Retorno(_) => Err("Las claves de diccionario no pueden ser retornos".to_string()),
             Objeto::Break => Err("Las claves de diccionario no pueden ser break".to_string()),
             Objeto::Continue => Err("Las claves de diccionario no pueden ser continue".to_string()),
             Objeto::Error(_) => Err("Las claves de diccionario no pueden ser errores".to_string()),
+            Objeto::Excepcion(_) => {
+                Err("Las claves de diccionario no pueden ser excepciones".to_string())
+            }
         }
     }
 
@@ -256,12 +280,26 @@ impl Objeto {
             (Objeto::Break, Objeto::Break) => true,
             (Objeto::Continue, Objeto::Continue) => true,
             (Objeto::Error(a), Objeto::Error(b)) => a == b,
+            (Objeto::Excepcion(a), Objeto::Excepcion(b)) => a.son_iguales(b),
             (Objeto::Arreglo(a), Objeto::Arreglo(b)) => {
                 a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x.son_iguales(y))
             }
             (Objeto::Buffer(a), Objeto::Buffer(b)) => a == b,
+            (Objeto::StructDef(a), Objeto::StructDef(b)) => a == b,
+            (Objeto::Instancia { nombre: na, campos: ca }, Objeto::Instancia { nombre: nb, campos: cb }) => {
+                na == nb
+                    && ca.len() == cb.len()
+                    && ca.iter().all(|(k, v)| cb.get(k).map_or(false, |w| v.son_iguales(w)))
+            }
             _ => false,
         }
+    }
+
+    /// Retorna `true` si el objeto es un error o una excepción propagable.
+    /// Tanto `Error(String)` como `Excepcion(Box<Objeto>)` interrumpen
+    /// el flujo normal de evaluación y deben ser propagados.
+    pub fn es_error(&self) -> bool {
+        matches!(self, Objeto::Error(_) | Objeto::Excepcion(_))
     }
 }
 
@@ -327,11 +365,18 @@ impl fmt::Display for Objeto {
             // interno se muestra por referencia (no se mueve ni clona).
             Objeto::Error(mensaje) => write!(f, "error: {}", mensaje),
 
+            // Excepcion: imprime el valor lanzado con prefijo "excepción: ".
+            Objeto::Excepcion(valor) => write!(f, "excepción: {}", valor),
+
             // Nativa: función built-in del sistema. No tiene nombre
             // asociado (es un puntero anónimo). Se imprime un texto
             // descriptivo genérico.
             Objeto::Nativa(_) => {
                 write!(f, "[Función nativa del sistema]")
+            }
+
+            Objeto::StructDef(campos) => {
+                write!(f, "StructDef({:?})", campos)
             }
 
             // Arreglo: imprime los elementos separados por coma y
@@ -352,6 +397,15 @@ impl fmt::Display for Objeto {
             Objeto::Diccionario(mapa) => {
                 write!(f, "{{")?;
                 for (i, (k, v)) in mapa.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}: {}", k, v)?;
+                }
+                write!(f, "}}")
+            }
+
+            Objeto::Instancia { nombre, campos } => {
+                write!(f, "{} {{", nombre)?;
+                for (i, (k, v)) in campos.iter().enumerate() {
                     if i > 0 { write!(f, ", ")?; }
                     write!(f, "{}: {}", k, v)?;
                 }
@@ -404,6 +458,8 @@ impl fmt::Debug for Objeto {
         // ({}) que ya produce salida legible. Nativa requiere manejo
         // especial porque fn pointer no es debugeable.
         match self {
+            // Excepcion: mostrar el valor envuelto.
+            Objeto::Excepcion(v) => write!(f, "Excepcion({})", v),
             // Nativa: el puntero a función no es debugeable directamente.
             // Mostramos un texto fijo. No podemos mostrar la dirección
             // de memoria sin Pointer (que fn pointer sí implementa, pero

@@ -2,19 +2,39 @@
 
 ## v1.5.2 — 2026-07-09
 
-### Nuevo: Módulo TUI nativo
-- `ui.ventana(nombre, ancho, alto)` — crea ventana con borde Unicode
-- `ui.texto(app_id, texto, x, y)` — dibuja texto en posición
-- `ui.boton(app_id, texto, x, y, callback_id)` — botón con fondo ANSI
-- `ui.ejecutar(app_id)` — loop de input hasta presionar 'q'
-- Renderer con `BufWriter` — flush mínimo, raw bytes UTF-8
-- Input retorna `&'static str` — zero-allocation por tecla
+### Nuevo: Render engine profesional
+- `Celda` con bg/fg/char — buffer de 2400 celdas (80×24)
+- `RenderEngine` con backbuffer/frontbuffer — dirty-rect diffing
+- `DirtyRect` merging — merge de rectángulos adyacentes
+- `AnsiBuf` — buffer de 4KB en stack, zero-alloc ANSI writing
+- `write_u8`/`write_usize` — enteros a ASCII sin format!
+- Batch de colores — solo escribe fg/bg cuando cambian entre celdas
+- `dirty_cells` bitset — salto rápido de celdas limpias
+
+### Nuevo: Library UI profesional
+- `Theme` estilo CustomTkinter — bg #2b2b2b, primary #3b82f6, accent #10b981
+- `LayoutCache` con HashMap pre-asignado — O(1) lookup por nodo
+- `calcular_layout` escribe en cache en lugar de Vec de tuples
+- `dibujar_arbol` busca por HashMap en lugar de iter().find()
+- Widgets: `Texto`, `Boton`, `Input`, `Separador`
+- Layouts: `Columna`, `Fila` con padding/border/margen
+
+### Nuevo: Window manager (ix)
+- `IXWindow` — ventana flotante con título, posición, z-index, callback
+- `IXDesktop` — escritorio con z-ordering y foco
+- `redibujar_ventana()` — solo limpia y redibuja 1 ventana
+- Arrow keys mueven ventana enfocada, Tab cambia foco
+- `ix.crear_ventana()`, `ix.mover_ventana()`, `ix.cerrar_ventana()`
 
 ### Optimizaciones de rendimiento
-- **Renderer**: `BufWriter<Stdout>` reduce syscalls de ~6 por operación a 1
-- **Renderer**: `dibujar_borde` usa raw bytes UTF-8 en buffer
-- **Input**: retorna `&'static str` en lugar de `String` (zero-alloc)
-- **Mod**: batch flush dentro del lock del Mutex
+- **Renderer**: 0 allocations en hot path (5760→0 allocs por frame)
+- **Renderer**: AnsiBuf 4KB stack buffer vs format! heap alloc
+- **Renderer**: Batch colores — solo escribe cuando fg/bg cambian
+- **Renderer**: dirty_cells bitset — skip O(1) por celda limpia
+- **UI**: LayoutCache HashMap — O(1) lookup vs O(n) iter().find()
+- **UI**: Input widget — push_str + padding manual sin format!
+- **IX**: redibujar_ventana — solo 1 ventana en lugar de todas
+- **IX**: Vec::with_capacity(16) para ventanas
 
 ---
 

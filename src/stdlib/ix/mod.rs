@@ -42,7 +42,7 @@ impl IXDesktop {
     pub fn new() -> Self {
         let (ancho, alto) = RenderEngine::detectar_terminal();
         IXDesktop {
-            ventanas: Vec::new(),
+            ventanas: Vec::with_capacity(16),
             ventana_foco: None,
             contador_ids: 0,
             engine: RenderEngine::new(ancho, alto),
@@ -50,26 +50,29 @@ impl IXDesktop {
         }
     }
 
+    #[inline]
     pub fn siguiente_id(&mut self) -> usize {
         self.contador_ids += 1;
         self.contador_ids
     }
 
+    #[inline]
     pub fn siguiente_z(&mut self) -> usize {
         self.max_z += 1;
         self.max_z
     }
 
-    /// Busca una ventana por ID.
+    #[inline]
     pub fn buscar_ventana(&self, id: usize) -> Option<&IXWindow> {
         self.ventanas.iter().find(|v| v.id == id)
     }
 
+    #[inline]
     pub fn buscar_ventana_mut(&mut self, id: usize) -> Option<&mut IXWindow> {
         self.ventanas.iter_mut().find(|v| v.id == id)
     }
 
-    /// Trae una ventana al frente (mayor z_index).
+    #[inline]
     pub fn traer_al_frente(&mut self, id: usize) {
         let z = self.siguiente_z();
         if let Some(v) = self.buscar_ventana_mut(id) {
@@ -77,26 +80,26 @@ impl IXDesktop {
         }
     }
 
-    /// Ordena ventanas por z_index (menor primero = se dibuja primero).
-    pub fn ordenar_por_z(&mut self) {
-        self.ventanas.sort_by_key(|v| v.z_index);
-    }
-
-    /// Dibuja todas las ventanas en el engine.
+    /// Dibuja todas las ventanas en el engine (ordenadas por z).
     pub fn dibujar_todas(&mut self) {
-        self.ordenar_por_z();
-
-        // Copiar ids para evitar borrow issues
-        let ids: Vec<usize> = self.ventanas.iter().map(|v| v.id).collect();
-
-        for id in &ids {
-            self.dibujar_ventana(*id);
+        self.ventanas.sort_by_key(|v| v.z_index);
+        for i in 0..self.ventanas.len() {
+            let id = self.ventanas[i].id;
+            self.dibujar_ventana_inner(id);
         }
     }
 
-    fn dibujar_ventana(&mut self, id: usize) {
-        // Extraer datos de la ventana primero
-        let (x, y, ancho, alto, titulo, is_foco) = {
+    /// Redibuja solo una ventana específica (más rápido que dibujar_todas).
+    pub fn redibujar_ventana(&mut self, id: usize) {
+        let data = self.buscar_ventana(id).map(|v| (v.x, v.y, v.ancho, v.alto));
+        if let Some((x, y, w, h)) = data {
+            self.engine.limpiar_area(x, y, w, h);
+            self.dibujar_ventana_inner(id);
+        }
+    }
+
+    fn dibujar_ventana_inner(&mut self, id: usize) {
+        let (x, y, ancho, alto, titulo, is_foco, visible) = {
             let v = match self.buscar_ventana(id) {
                 Some(v) => v,
                 None => return,
@@ -105,8 +108,12 @@ impl IXDesktop {
                 return;
             }
             let is_foco = self.ventana_foco == Some(id);
-            (v.x, v.y, v.ancho, v.alto, v.titulo.clone(), is_foco)
+            (v.x, v.y, v.ancho, v.alto, v.titulo.clone(), is_foco, v.visible)
         };
+
+        if !visible {
+            return;
+        }
 
         // Fondo de la ventana
         self.engine.poner_rectangulo(x, y, ancho, alto, (30, 30, 30));
@@ -120,7 +127,7 @@ impl IXDesktop {
         let titulo_corto: String = titulo.chars().take(max_titulo).collect();
         self.engine.poner_texto(x + 2, y, &titulo_corto, (255, 255, 255), bar_color);
 
-        // Botones de la barra (● ● ●)
+        // Botones de la barra
         if ancho > 6 {
             self.engine.poner_celda(x + ancho - 3, y, '×', (239, 68, 68), bar_color);
         }
@@ -531,8 +538,7 @@ pub fn crear_modulo() -> Objeto {
                                     st.desktop.engine.limpiar_area(nx, ny, w, h);
                                 }
                             }
-                            st.desktop.engine.limpiar_todo();
-                            st.desktop.dibujar_todas();
+                            st.desktop.redibujar_ventana(fid);
                             let mut stdout = BufWriter::new(std::io::stdout());
                             st.desktop.engine.flush(&mut stdout);
                         }
@@ -552,8 +558,7 @@ pub fn crear_modulo() -> Objeto {
                                     st.desktop.engine.limpiar_area(nx, ny, w, h);
                                 }
                             }
-                            st.desktop.engine.limpiar_todo();
-                            st.desktop.dibujar_todas();
+                            st.desktop.redibujar_ventana(fid);
                             let mut stdout = BufWriter::new(std::io::stdout());
                             st.desktop.engine.flush(&mut stdout);
                         }
@@ -573,8 +578,7 @@ pub fn crear_modulo() -> Objeto {
                                     st.desktop.engine.limpiar_area(nx, ny, w, h);
                                 }
                             }
-                            st.desktop.engine.limpiar_todo();
-                            st.desktop.dibujar_todas();
+                            st.desktop.redibujar_ventana(fid);
                             let mut stdout = BufWriter::new(std::io::stdout());
                             st.desktop.engine.flush(&mut stdout);
                         }
@@ -594,8 +598,7 @@ pub fn crear_modulo() -> Objeto {
                                     st.desktop.engine.limpiar_area(nx, ny, w, h);
                                 }
                             }
-                            st.desktop.engine.limpiar_todo();
-                            st.desktop.dibujar_todas();
+                            st.desktop.redibujar_ventana(fid);
                             let mut stdout = BufWriter::new(std::io::stdout());
                             st.desktop.engine.flush(&mut stdout);
                         }

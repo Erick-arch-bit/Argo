@@ -9,7 +9,7 @@ use crate::evaluator::object::LlaveHash;
 use crate::evaluator::Objeto;
 use crate::stdlib::render::RenderEngine;
 
-use layout::{calcular_layout, dibujar_arbol};
+use layout::{calcular_layout, dibujar_arbol, LayoutCache};
 use widgets::{DatosWidget, NodoUI, TipoLayout, UiState};
 
 // ---------------------------------------------------------------------------
@@ -18,6 +18,7 @@ use widgets::{DatosWidget, NodoUI, TipoLayout, UiState};
 pub struct AppState {
     pub ui: UiState,
     pub engine: RenderEngine,
+    pub layout_cache: LayoutCache,
 }
 
 static APP_STATE: OnceLock<Mutex<AppState>> = OnceLock::new();
@@ -28,6 +29,7 @@ fn get_state() -> &'static Mutex<AppState> {
         Mutex::new(AppState {
             ui: UiState::new(),
             engine: RenderEngine::new(ancho, alto),
+            layout_cache: LayoutCache::new(),
         })
     })
 }
@@ -363,7 +365,6 @@ pub fn crear_modulo() -> Objeto {
 
                     let foco = st.ui.foco_id;
                     let buf_ancho = st.engine.ancho;
-                    // Copiar theme para evitar borrow conflict
                     let theme = widgets::Theme {
                         bg: st.ui.theme.bg,
                         fg: st.ui.theme.fg,
@@ -378,8 +379,12 @@ pub fn crear_modulo() -> Objeto {
                     if let Some(raiz) = st.ui.raiz.take() {
                         st.engine.limpiar_todo();
 
-                        let resultados = calcular_layout(&raiz, 1, 1, buf_ancho.saturating_sub(2));
-                        dibujar_arbol(&raiz, &resultados, &mut st.engine, &theme, foco);
+                        calcular_layout(&raiz, 1, 1, buf_ancho.saturating_sub(2), &mut st.layout_cache);
+
+                        // Tomar layout_cache temporalmente para evitar borrow conflict
+                        let cache = std::mem::take(&mut st.layout_cache);
+                        dibujar_arbol(&raiz, &cache, &mut st.engine, &theme, foco);
+                        st.layout_cache = cache;
 
                         let mut stdout = BufWriter::new(std::io::stdout());
                         st.engine.flush(&mut stdout);

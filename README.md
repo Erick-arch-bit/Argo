@@ -102,19 +102,31 @@ assert(1 + 1 == 2, "matematicas basicas");
 
 ## Instalación
 
-### Script automático (recomendado)
+### Linux / macOS
 ```bash
-curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.1/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/Erick-arch-bit/Argo-Lang/dev/install.sh | bash
 ```
-Detecta SO/arquitectura (linux-amd64, linux-arm64, darwin-amd64, darwin-arm64) y descarga el binario precompilado. Si falla, compila desde fuente.
 
-### Compilación manual
-```bash
-git clone <repo-url>
-cd argo
-cargo build --release
-cp target/release/argo /usr/local/bin/
+### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/Erick-arch-bit/Argo-Lang/dev/install.ps1 | iex
 ```
+
+### Con Cargo (todas las plataformas)
+```bash
+cargo install --git https://github.com/Erick-arch-bit/Argo-Lang.git
+```
+
+### Descarga directa
+Binarios precompilados para todas las plataformas en [Releases](https://github.com/Erick-arch-bit/Argo-Lang/releases).
+
+| Plataforma | Binario |
+|------------|---------|
+| Linux x64 | `argo-linux-amd64` |
+| Linux ARM64 | `argo-linux-arm64` |
+| macOS Intel | `argo-darwin-amd64` |
+| macOS Apple Silicon | `argo-darwin-arm64` |
+| Windows x64 | `argo-windows-amd64.exe` |
 
 ## Licencia
 

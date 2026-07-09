@@ -97,4 +97,5 @@ jobs:
             "${{ matrix.binary_name }}" \
             "${{ matrix.binary_name }}.sha256" \
             install.sh \
+            install.ps1 \
             --clobber

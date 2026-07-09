@@ -9,14 +9,14 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (comando)".to_string(),
-            );
+            Vec::new());
         }
         let comando = match &args[0] {
             Objeto::Cadena(c) => c.clone(),
             _ => {
                 return Objeto::Error(
                     "El argumento debe ser una cadena (comando)".to_string(),
-                );
+                Vec::new());
             }
         };
 
@@ -28,7 +28,7 @@ pub fn crear_modulo() -> Objeto {
             }
             Err(e) => Objeto::Error(format!(
                 "Error al ejecutar el comando '{}': {}", comando, e
-            )),
+            ), Vec::new()),
         }
     }
 
@@ -36,14 +36,14 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (llave)".to_string(),
-            );
+            Vec::new());
         }
         let llave = match &args[0] {
             Objeto::Cadena(k) => k.clone(),
             _ => {
                 return Objeto::Error(
                     "El argumento debe ser una cadena (llave)".to_string(),
-                );
+                Vec::new());
             }
         };
 
@@ -57,7 +57,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (código de salida)".to_string(),
-            );
+            Vec::new());
         }
         let codigo = match &args[0] {
             Objeto::Entero(c) => *c as i32,
@@ -65,7 +65,7 @@ pub fn crear_modulo() -> Objeto {
                 return Objeto::Error(
                     "El argumento debe ser un entero (código de salida)"
                         .to_string(),
-                );
+                Vec::new());
             }
         };
         exit(codigo);
@@ -75,11 +75,11 @@ pub fn crear_modulo() -> Objeto {
         if !args.is_empty() {
             return Objeto::Error(
                 "os.directorio_actual no recibe argumentos".to_string(),
-            );
+            Vec::new());
         }
         match env::current_dir() {
             Ok(path) => Objeto::Cadena(path.to_string_lossy().to_string()),
-            Err(e) => Objeto::Error(format!("Error al obtener directorio actual: {}", e)),
+            Err(e) => Objeto::Error(format!("Error al obtener directorio actual: {}", e), Vec::new()),
         }
     }
 
@@ -87,7 +87,7 @@ pub fn crear_modulo() -> Objeto {
         if !args.is_empty() {
             return Objeto::Error(
                 "os.directorio_temporal no recibe argumentos".to_string(),
-            );
+            Vec::new());
         }
         Objeto::Cadena(env::temp_dir().to_string_lossy().to_string())
     }
@@ -96,7 +96,7 @@ pub fn crear_modulo() -> Objeto {
         if !args.is_empty() {
             return Objeto::Error(
                 "os.argumentos no recibe argumentos".to_string(),
-            );
+            Vec::new());
         }
         let args: Vec<Objeto> = env::args()
             .map(Objeto::Cadena)
@@ -108,7 +108,7 @@ pub fn crear_modulo() -> Objeto {
         if !args.is_empty() {
             return Objeto::Error(
                 "os.procesadores no recibe argumentos".to_string(),
-            );
+            Vec::new());
         }
         let count = std::thread::available_parallelism()
             .map(|n| n.get() as i64)

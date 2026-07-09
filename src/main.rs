@@ -314,7 +314,7 @@ fn ejecutar_desde_str(ruta: &str, contenido: &str) -> bool {
 
     let resultado = evaluar_programa(&programa, &mut entorno);
 
-    if matches!(resultado, Objeto::Error(_) | Objeto::Excepcion(_)) {
+    if matches!(resultado, Objeto::Error(_, _) | Objeto::Excepcion(_)) {
         println!("  {}: {}", ruta, resultado);
         false
     } else {

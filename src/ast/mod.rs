@@ -39,6 +39,10 @@ pub enum Statement {
         nombre: String,
         parametros: Vec<String>,
         cuerpo: Box<Statement>,
+        #[allow(dead_code)]
+        tipos_parametros: Vec<Option<String>>,
+        #[allow(dead_code)]
+        tipo_retorno: Option<String>,
     },
     DeclaracionStruct {
         nombre: String,
@@ -81,12 +85,23 @@ pub enum Expression {
     Funcion {
         parametros: Vec<String>,
         cuerpo: Box<Statement>,
+        #[allow(dead_code)]
+        tipos_parametros: Vec<Option<String>>,
+        #[allow(dead_code)]
+        tipo_retorno: Option<String>,
     },
 
     /// Importación de módulo: `import "ruta/al/archivo.argo"`
     /// Evalúa el archivo en un entorno aislado y retorna un diccionario
     /// con las variables globales exportadas.
     Import(String),
+
+    /// Importación selectiva: `import { foo, bar } from "modulo"`
+    /// Extrae solo las variables nombradas del módulo importado.
+    ImportSelectivo {
+        nombres: Vec<String>,
+        modulo: String,
+    },
 
     /// Match expression: `match (expr) { Patron => Expr, ... }`
     Match {

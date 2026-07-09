@@ -1,4 +1,4 @@
-# Argo v1.3.0
+# Argo v1.5.0
 
 Argo es un lenguaje de programación interpretado, minimalista y extensible, escrito en Rust **sin dependencias externas**.
 
@@ -11,14 +11,18 @@ curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.3.0/i
 | Área | Detalle |
 |------|---------|
 | **Tipos** | Entero (`i64`), Flotante (`f64`), Booleano, Cadena, Nulo, Arreglo, Diccionario, Buffer, Función |
-| **Control** | `if/else`, `while`, `for`, `break`, `try/catch` |
+| **Control** | `if/else`, `while`, `for`, `break`, `try/catch`, `throw` |
 | **Variables** | `let` (mutable), `const` (inmutable, verificado en runtime) |
 | **Funciones** | Declarativas `fn nombre(){}`, anónimas `fn(){}`, closures con ámbito léxico |
-| **Módulos** | `import "ruta"` (local/remoto), `import "https://..."` con caché automática |
+| **Módulos** | `import "ruta"` (local/remoto), `import "https://..."` con caché automática, `import { x } from "mod"` selectivo |
 | **Const** | `const PI = 3.1416;` — error si se reasigna |
-| **Concurrencia** | `thread.spawn("código")` — hilos aislados |
+| **Errores** | `throw "mensaje"` — lanzar errores manuales con traceback |
+| **Testing** | `argo test` — ejecuta archivos `*.test.argo` con `assert()` |
+| **Iteradores** | `arr.map(fn)`, `.filter()`, `.reduce()`, `.find()`, `.every()`, `.some()` |
+| **Concurrencia** | `thread.spawn("código")`, canales `canal.nuevo()` |
 | **GPU** | Framebuffer por software: `gpu.crear_buffer`, `.pixel`, `.linea`, `.rect`, `.circulo`, `.guardar`, `.mostrar` |
 | **Caché** | AST serializado a `.argbc` — segunda ejecución instantánea |
+| **Package manager** | `argo install` — lee `[dependencies]` de `argo.toml` |
 
 ## Biblioteca estándar
 
@@ -35,7 +39,7 @@ curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.3.0/i
 | `json` | `parsear`, `stringificar` |
 | `thread` | `spawn` |
 | `gpu` | `crear_buffer`, `pixel`, `linea`, `rect`, `circulo`, `guardar`, `mostrar`, `limpiar` |
-| Built-in | `print`, `len`, `push`, `tipo` |
+| Built-in | `print`, `len`, `push`, `tipo`, `assert`, `typeof` |
 
 ## Uso
 
@@ -44,10 +48,12 @@ argo                  REPL interactivo
 argo <archivo.argo>   Ejecuta un script
 argo init             Crea un nuevo proyecto
 argo run              Ejecuta el proyecto actual
+argo test             Ejecuta pruebas (*.test.argo)
+argo install          Instala dependencias desde argo.toml
 ```
 
 ```rust
-print("Hola desde Argo v1.3.0");
+print("Hola desde Argo v1.5.0");
 
 // Constante inmutable
 const PI = 3.1416;
@@ -77,13 +83,28 @@ try {
 } catch (e) {
     print("Error:", e);
 }
+
+// Throw personalizado
+fn verificar(valor) {
+    if (valor < 0) { throw "valor negativo no permitido" }
+    return valor;
+}
+
+// Iteradores funcionales
+let nums = [1, 2, 3, 4, 5];
+let dobles = arr.map(nums, fn(x) { x * 2 });
+let pares = arr.filter(nums, fn(x) { x % 2 == 0 });
+let suma = arr.reduce(nums, fn(acc, x) { acc + x }, 0);
+
+// Testing
+assert(1 + 1 == 2, "matematicas basicas");
 ```
 
 ## Instalación
 
 ### Script automático (recomendado)
 ```bash
-curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.3.0/install.sh | bash
+curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.0/install.sh | bash
 ```
 Detecta SO/arquitectura (linux-amd64, linux-arm64, darwin-amd64, darwin-arm64) y descarga el binario precompilado. Si falla, compila desde fuente.
 

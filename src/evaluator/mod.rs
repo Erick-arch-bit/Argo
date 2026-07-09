@@ -8,13 +8,24 @@ pub mod bytecode;
 pub mod modulo;
 pub mod object;
 pub mod environment;
+pub mod error;
 
 pub use modulo::importar;
 pub use object::LlaveHash;
 pub use object::Objeto;
+pub use object::CanalArgo;
 pub use environment::Entorno;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+
+// Pila de llamadas global (traceback). Se empuja el nombre de la función
+// al entrar y se hace pop al salir. Solo visible en este hilo.
+thread_local! {
+    pub static PILA_TRACEBACK: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
 
 // ---------------------------------------------------------------------------
 // Importaciones del AST
@@ -57,7 +68,7 @@ pub fn configurar_entorno_global() -> Entorno {
             return Objeto::Error(
                 "Número incorrecto de argumentos para len: se esperaba 1"
                     .to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Cadena(c) => Objeto::Entero(c.len() as i64),
@@ -65,7 +76,7 @@ pub fn configurar_entorno_global() -> Entorno {
             Objeto::Diccionario(d) => Objeto::Entero(d.len() as i64),
             _ => Objeto::Error(
                 "El tipo no soporta la función len".to_string(),
-            ),
+            Vec::new()),
         }
     };
 
@@ -74,7 +85,7 @@ pub fn configurar_entorno_global() -> Entorno {
             return Objeto::Error(
                 "Número incorrecto de argumentos para push: se esperaban 2"
                     .to_string(),
-            );
+            Vec::new());
         }
         let mut args_iter = args.into_iter();
         let primer_arg = args_iter.next().unwrap();
@@ -87,7 +98,7 @@ pub fn configurar_entorno_global() -> Entorno {
             }
             _ => Objeto::Error(
                 "El primer argumento de push debe ser un arreglo".to_string(),
-            ),
+            Vec::new()),
         }
     };
 
@@ -95,20 +106,20 @@ pub fn configurar_entorno_global() -> Entorno {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento para entero".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Cadena(s) => match s.parse::<i64>() {
                 Ok(n) => Objeto::Entero(n),
                 Err(_) => Objeto::Error(format!(
                     "No se pudo convertir '{}' a entero", s
-                )),
+                ), Vec::new()),
             },
             Objeto::Entero(_) => args[0].clone(),
             Objeto::Flotante(f) => Objeto::Entero(*f as i64),
             _ => Objeto::Error(
                 "El argumento debe ser una cadena o número".to_string(),
-            ),
+            Vec::new()),
         }
     };
 
@@ -116,7 +127,7 @@ pub fn configurar_entorno_global() -> Entorno {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento para cadena".to_string(),
-            );
+            Vec::new());
         }
         Objeto::Cadena(format!("{}", args[0]))
     };
@@ -126,7 +137,7 @@ pub fn configurar_entorno_global() -> Entorno {
             return Objeto::Error(
                 "Número incorrecto de argumentos para tipo: se esperaba 1"
                     .to_string(),
-            );
+            Vec::new());
         }
         let nombre = match &args[0] {
             Objeto::Entero(_) => "entero",
@@ -135,12 +146,13 @@ pub fn configurar_entorno_global() -> Entorno {
             Objeto::Cadena(_) => "cadena",
             Objeto::Nulo => "nulo",
             Objeto::Retorno(_) => "retorno",
-            Objeto::Error(_) => "error",
+            Objeto::Error(_, _) => "error",
             Objeto::Nativa(_) => "nativa",
             Objeto::Funcion { .. } => "funcion",
             Objeto::Arreglo(_) => "arreglo",
             Objeto::Diccionario(_) => "diccionario",
             Objeto::Buffer(_) => "buffer",
+            Objeto::Canal(_) => "canal",
             Objeto::StructDef(_) => "struct_def",
             Objeto::Instancia { .. } => "instancia",
             Objeto::Break => "break",
@@ -160,17 +172,93 @@ pub fn configurar_entorno_global() -> Entorno {
     let assert_nativa = |args: Vec<Objeto>| -> Objeto {
         if args.len() < 1 || args.len() > 2 {
             return Objeto::Error(
-                "assert: se esperaban 1-2 argumentos (condición, mensaje?)".to_string(),
-            );
+                "assert: se esperaban 1-2 argumentos (condición, mensaje?, Vec::new())".to_string(),
+            Vec::new());
         }
         let cond = &args[0];
         if !es_truthy(cond) {
             let msg = if args.len() == 2 { format!("{}", args[1]) } else { "".to_string() };
-            return Objeto::Error(format!("ASSERTION FAILED: {}", msg));
+            return Objeto::Error(format!("ASSERTION FAILED: {}", msg), Vec::new());
         }
         Objeto::Nulo
     };
     entorno.asignar("assert".to_string(), Objeto::Nativa(assert_nativa));
+
+    // --- Funciones de canal ---
+    let canal_nativa = |args: Vec<Objeto>| -> Objeto {
+        if !args.is_empty() {
+            return Objeto::Error(
+                "canal: no se esperaban argumentos".to_string(),
+                Vec::new(),
+            );
+        }
+        let (tx, rx) = mpsc::channel();
+        Objeto::Canal(Arc::new(CanalArgo {
+            transmisor: tx,
+            receptor: Mutex::new(rx),
+        }))
+    };
+    entorno.asignar("canal".to_string(), Objeto::Nativa(canal_nativa));
+
+    let enviar_nativa = |args: Vec<Objeto>| -> Objeto {
+        if args.len() != 2 {
+            return Objeto::Error(
+                "enviar: se esperaban 2 argumentos (canal, valor)".to_string(),
+                Vec::new(),
+            );
+        }
+        let mut args_iter = args.into_iter();
+        let canal = args_iter.next().unwrap();
+        let valor = args_iter.next().unwrap();
+        match canal {
+            Objeto::Canal(c) => {
+                match c.transmisor.send(valor) {
+                    Ok(()) => Objeto::Nulo,
+                    Err(e) => Objeto::Error(
+                        format!("Error al enviar al canal: {}", e),
+                        Vec::new(),
+                    ),
+                }
+            }
+            _ => Objeto::Error(
+                "enviar: el primer argumento debe ser un canal".to_string(),
+                Vec::new(),
+            ),
+        }
+    };
+    entorno.asignar("enviar".to_string(), Objeto::Nativa(enviar_nativa));
+
+    let recibir_nativa = |args: Vec<Objeto>| -> Objeto {
+        if args.len() != 1 {
+            return Objeto::Error(
+                "recibir: se esperaba 1 argumento (canal)".to_string(),
+                Vec::new(),
+            );
+        }
+        let canal = args.into_iter().next().unwrap();
+        match canal {
+            Objeto::Canal(c) => {
+                match c.receptor.lock() {
+                    Ok(receptor) => match receptor.recv() {
+                        Ok(valor) => valor,
+                        Err(e) => Objeto::Error(
+                            format!("Error al recibir del canal: {}", e),
+                            Vec::new(),
+                        ),
+                    },
+                    Err(_) => Objeto::Error(
+                        "Error de bloqueo al recibir del canal".to_string(),
+                        Vec::new(),
+                    ),
+                }
+            }
+            _ => Objeto::Error(
+                "recibir: el argumento debe ser un canal".to_string(),
+                Vec::new(),
+            ),
+        }
+    };
+    entorno.asignar("recibir".to_string(), Objeto::Nativa(recibir_nativa));
 
     // Inyectar módulos de la biblioteca estándar (math, fs, net, json).
     crate::stdlib::inyectar_stdlib(&mut entorno);
@@ -222,8 +310,8 @@ pub fn evaluar_programa(programa: &Programa, entorno: &mut Entorno) -> Objeto {
         // las variantes sin mover el Objeto. Si hiciera `match resultado`,
         // la ownership se transferiría al match y no podríamos retornarlo.
         match &resultado {
-            // Objeto::Error(_) y Objeto::Retorno(_) interrumpen el flujo.
-            Objeto::Error(_) | Objeto::Retorno(_) | Objeto::Excepcion(_) => break,
+            // Objeto::Error(_, _, Vec::new()) y Objeto::Retorno(_) interrumpen el flujo.
+            Objeto::Error(_, _) | Objeto::Retorno(_) | Objeto::Excepcion(_) => break,
             // Break y Continue se consumen (no se propagan al programa).
             Objeto::Break | Objeto::Continue => break,
             // Cualquier otro valor es un resultado normal.
@@ -329,7 +417,7 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
                 // 2c. Evaluar el cuerpo.
                 let resultado_cuerpo = evaluar_sentencia(cuerpo, entorno);
                 match &resultado_cuerpo {
-                    Objeto::Retorno(_) | Objeto::Error(_) | Objeto::Excepcion(_) => {
+                    Objeto::Retorno(_) | Objeto::Error(_, _) | Objeto::Excepcion(_) => {
                         return resultado_cuerpo;
                     }
                     // Break: detener el bucle sin propagar la señal.
@@ -368,7 +456,7 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
         //
         // # Mecanismo de intercepción
         // 1. Se ejecuta `bloque_try` en el entorno actual.
-        // 2. Si el resultado es Objeto::Error(mensaje):
+        // 2. Si el resultado es Objeto::Error(mensaje, Vec::new()):
         //    a. Se crea un entorno hijo (ámbito local para catch).
         //    b. Se asigna el mensaje de error como Objeto::Cadena a la
         //       variable `parametro_catch` dentro de ese entorno.
@@ -399,7 +487,7 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
             //    a la variable del catch.
             match resultado_try {
                 // 2a. Sí: interceptar el error interno.
-                Objeto::Error(mensaje) => {
+                Objeto::Error(mensaje, _) => {
                     let mut entorno_catch =
                         Entorno::nuevo_local(entorno.clone());
 
@@ -469,7 +557,7 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
                 }
                 Err(mensaje) => {
                     // Variable no encontrada en ningún ámbito.
-                    Objeto::Error(mensaje)
+                    Objeto::Error(mensaje, Vec::new())
                 }
             }
         }
@@ -494,6 +582,8 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
             nombre,
             parametros,
             cuerpo,
+            tipos_parametros: _,
+            tipo_retorno: _,
         } => {
             // 1. Capturar el entorno actual.
             //    `entorno.clone()` copia profundamente todo el ámbito
@@ -504,18 +594,11 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
             let entorno_capturado = entorno.clone();
 
             // 2. Construir el objeto función.
-            //    parametros.clone(): clona el Vec<String> del AST.
-            //      necesario porque el AST presta &Vec<String> y
-            //      Objeto::Funcion necesita ownership.
-            //    cuerpo.clone(): clona el Box<Statement> (árbol AST
-            //      completo del cuerpo). clone() aloca un nuevo
-            //      Box y copia recursivamente todas las sentencias
-            //      internas. Es O(n_sentencias) en heap.
-            //    entorno: entorno_capturado se mueve al enum.
             let funcion = Objeto::Funcion {
                 parametros: parametros.clone(),
                 cuerpo: cuerpo.clone(),
                 entorno: entorno_capturado,
+                nombre: Some(nombre.clone()),
             };
 
             // 3. Almacenar la función en el entorno actual.
@@ -560,7 +643,7 @@ fn evaluar_bloque(sentencias: &[Statement], entorno: &mut Entorno) -> Objeto {
         resultado = evaluar_sentencia(sentencia, &mut entorno_bloque);
 
         match &resultado {
-            Objeto::Error(_) | Objeto::Excepcion(_) | Objeto::Retorno(_) | Objeto::Break | Objeto::Continue => break,
+            Objeto::Error(_, _) | Objeto::Excepcion(_) | Objeto::Retorno(_) | Objeto::Break | Objeto::Continue => break,
             _ => {}
         }
     }
@@ -754,7 +837,7 @@ fn evaluar_sentencia_while(
         //    Sin esta verificación, el bucle continuaría iterando
         //    ignorando el retorno, lo que sería incorrecto.
         match &resultado_cuerpo {
-            Objeto::Retorno(_) | Objeto::Error(_) | Objeto::Excepcion(_) => return resultado_cuerpo,
+            Objeto::Retorno(_) | Objeto::Error(_, _) | Objeto::Excepcion(_) => return resultado_cuerpo,
             // Break: señala que el cuerpo ejecutó break; detener el
             // bucle y retornar Nulo (no propagar el Break al exterior).
             Objeto::Break => break,
@@ -809,6 +892,7 @@ pub fn evaluar_llamada_funcion(funcion: Objeto, argumentos: Vec<Objeto>) -> Obje
             parametros,
             cuerpo,
             entorno: entorno_capturado,
+            nombre: nombre_funcion,
         } => {
             // 1. Verificar aridad.
             if parametros.len() != argumentos.len() {
@@ -816,26 +900,32 @@ pub fn evaluar_llamada_funcion(funcion: Objeto, argumentos: Vec<Objeto>) -> Obje
                     "Número incorrecto de argumentos: se esperaban {}, se recibieron {}",
                     parametros.len(),
                     argumentos.len()
-                ));
+                ), Vec::new());
             }
 
-            // 2. Crear entorno de llamada con el entorno capturado como padre.
-            //    Esto implementa el cierre léxico: la función ve las
-            //    variables que existían cuando fue definida.
+            // 2. Push traceback: nombre de la función (o "anon" si no tiene).
+            let nombre_frame = nombre_funcion.clone().unwrap_or_else(|| "anon".to_string());
+            PILA_TRACEBACK.with(|pila| pila.borrow_mut().push(nombre_frame.clone()));
+
+            // 3. Crear entorno de llamada con el entorno capturado como padre.
             let mut entorno_llamada = Entorno::nuevo_local(entorno_capturado);
 
-            // 3. Asignar argumentos a parámetros.
-            //    parametros.into_iter() consume el Vec (no clonación).
-            //    argumentos.into_iter() consume el Vec de argumentos.
-            //    zip() empareja cada uno. asignar() mueve ambos al HashMap.
+            // 4. Asignar argumentos a parámetros.
             for (param, arg) in parametros.into_iter().zip(argumentos) {
                 entorno_llamada.asignar(param, arg);
             }
 
-            // 4. Evaluar el cuerpo de la función.
-            let resultado = evaluar_sentencia(&cuerpo, &mut entorno_llamada);
+            // 5. Evaluar el cuerpo de la función.
+            let mut resultado = evaluar_sentencia(&cuerpo, &mut entorno_llamada);
 
-            // 5. Desenrollar el retorno.
+            // 6. Capturar traceback en el error antes de hacer pop.
+            let pila_actual: Vec<String> = PILA_TRACEBACK.with(|pila| pila.borrow().clone());
+            resultado = incrustar_traceback(resultado, &pila_actual);
+
+            // 7. Pop traceback (el frame actual ya se incrustó).
+            PILA_TRACEBACK.with(|pila| pila.borrow_mut().pop());
+
+            // 8. Desenrollar el retorno.
             match resultado {
                 Objeto::Retorno(valor) => *valor,
                 _ => resultado,
@@ -860,7 +950,7 @@ pub fn evaluar_llamada_funcion(funcion: Objeto, argumentos: Vec<Objeto>) -> Obje
         // No invocable (seguridad: no debería llegar aquí por el check
         // en evaluar_expresion, pero se cubre por completitud)
         // ===================================================================
-        _ => Objeto::Error("No es una función invocable".to_string()),
+        _ => Objeto::Error("No es una función invocable".to_string(), Vec::new()),
     }
 }
 
@@ -876,10 +966,17 @@ pub fn evaluar_llamada_funcion(funcion: Objeto, argumentos: Vec<Objeto>) -> Obje
 //   - Retorno(v) → delegar en el valor interno (recursivo)
 //   - Error(_) → false (un error no es verdadero)
 //
-// Parámetros:
-//   objeto: &Objeto — préstamo inmutable. Solo leemos el valor,
-//     no tomamos ownership. Esto permite usar es_truthy sin
-//     consumir el Objeto (el llamante retiene su ownership).
+fn incrustar_traceback(resultado: Objeto, pila_actual: &[String]) -> Objeto {
+    match resultado {
+        Objeto::Error(mensaje, _) => Objeto::Error(mensaje, pila_actual.to_vec()),
+        Objeto::Excepcion(valor) => {
+            // Envolver en Error con el valor convertido y la traza
+            Objeto::Error(format!("{}", valor), pila_actual.to_vec())
+        }
+        other => other,
+    }
+}
+
 fn es_truthy(objeto: &Objeto) -> bool {
     match objeto {
         // Nulo siempre es falso (como null en JS/Java).
@@ -924,7 +1021,7 @@ fn es_truthy(objeto: &Objeto) -> bool {
 
         // Error: cualquier error se considera falso (no se puede
         // "negar" un error de forma significativa).
-        Objeto::Error(_) => false,
+        Objeto::Error(_, _) => false,
 
         // Excepcion: una excepción lanzada es falsa.
         Objeto::Excepcion(_) => false,
@@ -940,6 +1037,7 @@ fn es_truthy(objeto: &Objeto) -> bool {
         // de qué función sea, su presencia es un valor verdadero.
         Objeto::Nativa(_) => true,
 
+        Objeto::Canal(_) => true,
         Objeto::StructDef(_) | Objeto::Instancia { .. } => true,
     }
 }
@@ -977,7 +1075,7 @@ fn evaluar_unario(operador: &str, derecha: Objeto) -> Objeto {
             _ => Objeto::Error(format!(
                 "Negación aritmética no soportada para: {}",
                 derecha
-            )),
+            ), Vec::new()),
         },
 
         // -------------------------------------------------------------------
@@ -1008,7 +1106,7 @@ fn evaluar_unario(operador: &str, derecha: Objeto) -> Objeto {
         _ => Objeto::Error(format!(
             "Operador unario desconocido: {}",
             operador
-        )),
+        ), Vec::new()),
     }
 }
 
@@ -1061,7 +1159,7 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
             // prevenimos d == 0 explícitamente.
             "/" => {
                 if d == 0 {
-                    Objeto::Error("Error: división por cero".to_string())
+                    Objeto::Error("Error: división por cero".to_string(), Vec::new())
                 } else {
                     Objeto::Entero(i / d)
                 }
@@ -1072,7 +1170,7 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
             // (estilo C99, no Python).
             "%" => {
                 if d == 0 {
-                    Objeto::Error("Error: módulo por cero".to_string())
+                    Objeto::Error("Error: módulo por cero".to_string(), Vec::new())
                 } else {
                     Objeto::Entero(i % d)
                 }
@@ -1105,7 +1203,7 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
             // sobre enteros, como "&&", "||", etc.
             _ => Objeto::Error(format!(
                 "Operación '{}' no soportada entre enteros", operador
-            )),
+            ), Vec::new()),
         },
 
         // ===================================================================
@@ -1134,11 +1232,11 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
             "&" | "|" | "^" | "<<" | ">>" => Objeto::Error(
                 "Las operaciones a nivel de bits solo soportan números enteros"
                     .to_string(),
-            ),
+            Vec::new()),
 
             _ => Objeto::Error(format!(
                 "Operación '{}' no soportada entre flotantes", operador
-            )),
+            ), Vec::new()),
         },
 
         // ===================================================================
@@ -1176,7 +1274,7 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
 
             _ => Objeto::Error(format!(
                 "Operación '{}' no soportada entre cadenas", operador
-            )),
+            ), Vec::new()),
         },
 
         // ===================================================================
@@ -1190,7 +1288,7 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
             "!=" => Objeto::Booleano(true),
             _ => Objeto::Error(format!(
                 "Operación '{}' no soportada entre cadena y entero", operador
-            )),
+            ), Vec::new()),
         },
         (Objeto::Cadena(i), Objeto::Flotante(d)) => match operador {
             "+" => Objeto::Cadena(format!("{}{}", i, d)),
@@ -1198,7 +1296,7 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
             "!=" => Objeto::Booleano(true),
             _ => Objeto::Error(format!(
                 "Operación '{}' no soportada entre cadena y flotante", operador
-            )),
+            ), Vec::new()),
         },
         (Objeto::Entero(i), Objeto::Cadena(d)) => match operador {
             "+" => Objeto::Cadena(format!("{}{}", i, d)),
@@ -1206,7 +1304,7 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
             "!=" => Objeto::Booleano(true),
             _ => Objeto::Error(format!(
                 "Operación '{}' no soportada entre entero y cadena", operador
-            )),
+            ), Vec::new()),
         },
         (Objeto::Flotante(i), Objeto::Cadena(d)) => match operador {
             "+" => Objeto::Cadena(format!("{}{}", i, d)),
@@ -1214,7 +1312,7 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
             "!=" => Objeto::Booleano(true),
             _ => Objeto::Error(format!(
                 "Operación '{}' no soportada entre flotante y cadena", operador
-            )),
+            ), Vec::new()),
         },
 
         // ===================================================================
@@ -1226,7 +1324,7 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
 
             _ => Objeto::Error(format!(
                 "Operación '{}' no soportada entre booleanos", operador
-            )),
+            ), Vec::new()),
         },
 
         // ===================================================================
@@ -1253,7 +1351,7 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
             _ => Objeto::Error(format!(
                 "Discrepancia de tipos: no se puede aplicar \
                  '{}' entre tipos distintos", operador
-            )),
+            ), Vec::new()),
         },
     }
 }
@@ -1343,7 +1441,7 @@ fn evaluar_acceso_indice_con_profundidad(
             "Stack Overflow preventivo: Cadena de prototipos \
              demasiado profunda o cíclica"
                 .to_string(),
-        );
+        Vec::new());
     }
     match (estructura, indice) {
         // Acceso válido: Arreglo indexado por un entero.
@@ -1353,7 +1451,7 @@ fn evaluar_acceso_indice_con_profundidad(
             if i < 0 || (i as usize) >= len {
                 Objeto::Error(format!(
                     "Índice fuera de rango: {} (longitud: {})", i, len
-                ))
+                ), Vec::new())
             } else {
                 // Clonar el elemento en la posición i.
                 // elementos[i as usize] es &Objeto; .clone() crea una
@@ -1366,7 +1464,7 @@ fn evaluar_acceso_indice_con_profundidad(
         (Objeto::Arreglo(_), _) => {
             Objeto::Error(
                 "El índice debe ser un entero".to_string()
-            )
+            , Vec::new())
         }
 
         // Acceso válido: Diccionario indexado por cualquier LlaveHash.
@@ -1375,7 +1473,7 @@ fn evaluar_acceso_indice_con_profundidad(
             // falla (tipo no válido como clave), propagar el error.
             let llave = match indice.obtener_llave_hash() {
                 Ok(k) => k,
-                Err(msg) => return Objeto::Error(msg),
+                Err(msg) => return Objeto::Error(msg, Vec::new()),
             };
             // Buscar la clave en el HashMap. get() retorna Option<&Objeto>.
             // Si la clave existe, clonamos el valor y lo retornamos.
@@ -1408,7 +1506,7 @@ fn evaluar_acceso_indice_con_profundidad(
             if i < 0 || (i as usize) >= len {
                 Objeto::Error(format!(
                     "Índice fuera de rango: {} (longitud: {})", i, len
-                ))
+                ), Vec::new())
             } else {
                 Objeto::Entero(bytes[i as usize] as i64)
             }
@@ -1416,7 +1514,7 @@ fn evaluar_acceso_indice_con_profundidad(
         (Objeto::Buffer(_), _) => {
             Objeto::Error(
                 "El índice debe ser un entero".to_string()
-            )
+            , Vec::new())
         }
 
         // Acceso a campo de struct: `p.x`
@@ -1425,23 +1523,23 @@ fn evaluar_acceso_indice_con_profundidad(
                 Some(valor) => valor.clone(),
                 None => Objeto::Error(format!(
                     "El struct no tiene el campo '{}'", campo
-                )),
+                ), Vec::new()),
             }
         }
         (Objeto::StructDef(_), _) => Objeto::Error(
             "No se puede acceder por índice a una definición de struct; use la instancia".to_string()
-        ),
+        , Vec::new()),
         (Objeto::Instancia { .. }, _) => {
             Objeto::Error(
-                "El índice debe ser una cadena (nombre del campo)".to_string()
-            )
+                "El índice debe ser una cadena (nombre del campo, Vec::new())".to_string()
+            , Vec::new())
         }
 
         // La estructura no soporta acceso por índice.
         (_, _) => {
             Objeto::Error(
                 "El tipo no soporta acceso por índice".to_string()
-            )
+            , Vec::new())
         }
     }
 }
@@ -1515,7 +1613,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                 None => Objeto::Error(format!(
                     "Variable no encontrada: {}",
                     nombre
-                )),
+                ), Vec::new()),
             }
         }
 
@@ -1583,7 +1681,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                 Token::DesplazamientoDer => ">>",
                 _ => return Objeto::Error(format!(
                     "Operador binario desconocido: {:?}", operador
-                )),
+                ), Vec::new()),
             };
 
             // 4. Delegar en evaluar_binario, que consume ownership
@@ -1618,7 +1716,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                 Token::Not => "!",
                 _ => return Objeto::Error(format!(
                     "Operador unario desconocido: {:?}", operador
-                )),
+                ), Vec::new()),
             };
 
             // 4. Delegar en evaluar_unario, que consume ownership
@@ -1655,7 +1753,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             if !matches!(eval_funcion, Objeto::Funcion { .. } | Objeto::Nativa(_)) {
                 return Objeto::Error(
                     "No es una función invocable".to_string(),
-                );
+                Vec::new());
             }
 
             // 4. Evaluar cada argumento en orden.
@@ -1720,7 +1818,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                 // 2. Convertir a LlaveHash. Si falla, propagar error.
                 let llave = match clave_eval.tomar_llave_hash() {
                     Ok(k) => k,
-                    Err(msg) => return Objeto::Error(msg),
+                    Err(msg) => return Objeto::Error(msg, Vec::new()),
                 };
 
                 // 3. Evaluar la expresión del valor.
@@ -1760,6 +1858,8 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
         Expression::Funcion {
             parametros,
             cuerpo,
+            tipos_parametros: _,
+            tipo_retorno: _,
         } => {
             // Capturar el entorno actual (cierre léxico). La clonación
             // copia el HashMap y la cadena de padres. Esta copia queda
@@ -1770,6 +1870,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                 parametros: parametros.clone(),
                 cuerpo: cuerpo.clone(),
                 entorno: entorno_capturado,
+                nombre: None,
             }
         }
 
@@ -1830,7 +1931,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                 Ok(s) => s,
                 Err(e) => return Objeto::Error(format!(
                     "No se pudo importar: {}", e
-                )),
+                ), Vec::new()),
             };
             let programa_modulo = Programa { sentencias };
 
@@ -1875,6 +1976,39 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             // g. Retornar el diccionario del módulo. El llamante
             //    puede indexarlo con notación de punto o corchetes.
             Objeto::Diccionario(mapa_modulo)
+        }
+
+        // Expression::ImportSelectivo { nombres, modulo } —
+        // Importación selectiva: `import { foo, bar } from "mod"`
+        Expression::ImportSelectivo { nombres, modulo } => {
+            let sentencias = match importar(modulo) {
+                Ok(s) => s,
+                Err(e) => return Objeto::Error(format!(
+                    "No se pudo importar: {}", e
+                ), Vec::new()),
+            };
+            let programa_modulo = Programa { sentencias };
+            let mut entorno_modulo = configurar_entorno_global();
+            let resultado_modulo = evaluar_programa(
+                &programa_modulo, &mut entorno_modulo,
+            );
+            if resultado_modulo.es_error() { return resultado_modulo }
+
+            // Extraer solo las variables solicitadas
+            let mut mapa_resultado = HashMap::new();
+            for nombre in nombres {
+                match entorno_modulo.obtener(&nombre) {
+                    Some(valor) => {
+                        mapa_resultado.insert(
+                            LlaveHash::Cadena(nombre.clone()), valor,
+                        );
+                    }
+                    None => return Objeto::Error(format!(
+                        "El módulo '{}' no exporta '{}'", modulo, nombre
+                    ), Vec::new()),
+                }
+            }
+            Objeto::Diccionario(mapa_resultado)
         }
     }
 }

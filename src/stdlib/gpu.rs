@@ -24,13 +24,14 @@ fn extraer_entero(args: &[Objeto], idx: usize, nombre: &str) -> Result<i64, Obje
                 Objeto::Instancia { .. } => "instancia",
                 Objeto::Break => "break",
                 Objeto::Continue => "continue",
-                Objeto::Error(_) => "error",
+                Objeto::Error(_, _) => "error",
+                Objeto::Canal(_) => "canal",
                 Objeto::Excepcion(_) => "excepcion",
             }
-        ))),
+        ), Vec::new())),
         None => Err(Objeto::Error(format!(
             "gpu: falta el argumento '{}'", nombre
-        ))),
+        ), Vec::new())),
     }
 }
 
@@ -47,11 +48,12 @@ fn extraer_framebuffer(args: &[Objeto]) -> Result<(Vec<u8>, usize, usize), Objet
                 Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
                 Objeto::Retorno(_) => "retorno", Objeto::StructDef(_) => "struct_def",
                 Objeto::Instancia { .. } => "instancia", Objeto::Break => "break",
-                Objeto::Continue => "continue", Objeto::Error(_) => "error",
+                Objeto::Continue => "continue", Objeto::Error(_, _) => "error",
+                Objeto::Canal(_) => "canal",
                 Objeto::Excepcion(_) => "excepcion",
             }
-        ))),
-        None => return Err(Objeto::Error("gpu: falta el argumento framebuffer".to_string())),
+        ), Vec::new())),
+        None => return Err(Objeto::Error("gpu: falta el argumento framebuffer".to_string(), Vec::new())),
     };
 
     let buffer = match fb.get(&LlaveHash::Cadena("buffer".to_string())) {
@@ -66,22 +68,23 @@ fn extraer_framebuffer(args: &[Objeto]) -> Result<(Vec<u8>, usize, usize), Objet
                 Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
                 Objeto::Retorno(_) => "retorno", Objeto::StructDef(_) => "struct_def",
                 Objeto::Instancia { .. } => "instancia", Objeto::Break => "break",
-                Objeto::Continue => "continue", Objeto::Error(_) => "error",
+                Objeto::Continue => "continue", Objeto::Error(_, _) => "error",
+                Objeto::Canal(_) => "canal",
                 Objeto::Excepcion(_) => "excepcion",
             }
-        ))),
-        None => return Err(Objeto::Error("gpu: framebuffer no contiene 'buffer'".to_string())),
+        ), Vec::new())),
+        None => return Err(Objeto::Error("gpu: framebuffer no contiene 'buffer'".to_string(), Vec::new())),
     };
     let ancho = match fb.get(&LlaveHash::Cadena("ancho".to_string())) {
         Some(Objeto::Entero(w)) => *w as usize,
-        _ => return Err(Objeto::Error("gpu: framebuffer inválido: 'ancho' debe ser un entero".to_string())),
+        _ => return Err(Objeto::Error("gpu: framebuffer inválido: 'ancho' debe ser un entero".to_string(), Vec::new())),
     };
     let alto = match fb.get(&LlaveHash::Cadena("alto".to_string())) {
         Some(Objeto::Entero(h)) => *h as usize,
-        _ => return Err(Objeto::Error("gpu: framebuffer inválido: 'alto' debe ser un entero".to_string())),
+        _ => return Err(Objeto::Error("gpu: framebuffer inválido: 'alto' debe ser un entero".to_string(), Vec::new())),
     };
     if buffer.len() < ancho * alto * 4 {
-        return Err(Objeto::Error("gpu: framebuffer: tamaño de datos insuficiente".to_string()));
+        return Err(Objeto::Error("gpu: framebuffer: tamaño de datos insuficiente".to_string(), Vec::new()));
     }
     Ok((buffer, ancho, alto))
 }
@@ -112,7 +115,7 @@ pub fn crear_modulo() -> Objeto {
             return Objeto::Error(format!(
                 "gpu.crear_buffer: se esperaban 2 argumentos (ancho, alto), se recibieron {}",
                 args.len()
-            ));
+            ), Vec::new());
         }
         let ancho = match extraer_entero(&args, 0, "ancho") {
             Ok(v) => v,
@@ -126,7 +129,7 @@ pub fn crear_modulo() -> Objeto {
             return Objeto::Error(format!(
                 "gpu.crear_buffer: ancho y alto deben ser positivos, se recibió {}x{}",
                 ancho, alto
-            ));
+            ), Vec::new());
         }
         let (w, h) = (ancho as usize, alto as usize);
         let tamano = w * h * 4;
@@ -134,7 +137,7 @@ pub fn crear_modulo() -> Objeto {
             return Objeto::Error(format!(
                 "gpu.crear_buffer: el framebuffer {}x{} es demasiado grande ({} MB)",
                 w, h, tamano / (1024 * 1024)
-            ));
+            ), Vec::new());
         }
         reconstruir_fb(vec![0; tamano], w, h)
     }
@@ -144,7 +147,7 @@ pub fn crear_modulo() -> Objeto {
             return Objeto::Error(format!(
                 "gpu.pixel: se esperaban 6 argumentos (fb, x, y, r, g, b), se recibieron {}",
                 args.len()
-            ));
+            ), Vec::new());
         }
         let (mut buf, w, h) = match extraer_framebuffer(&args) {
             Ok(v) => v,
@@ -172,7 +175,7 @@ pub fn crear_modulo() -> Objeto {
             return Objeto::Error(format!(
                 "gpu.linea: se esperaban 8 argumentos (fb, x1, y1, x2, y2, r, g, b), se recibieron {}",
                 args.len()
-            ));
+            ), Vec::new());
         }
         let (mut buf, w, h) = match extraer_framebuffer(&args) {
             Ok(v) => v,
@@ -215,7 +218,7 @@ pub fn crear_modulo() -> Objeto {
             return Objeto::Error(format!(
                 "gpu.rect: se esperaban 8 argumentos (fb, x, y, ancho, alto, r, g, b), se recibieron {}",
                 args.len()
-            ));
+            ), Vec::new());
         }
         let (mut buf, w, h) = match extraer_framebuffer(&args) {
             Ok(v) => v,
@@ -250,7 +253,7 @@ pub fn crear_modulo() -> Objeto {
             return Objeto::Error(format!(
                 "gpu.circulo: se esperaban 7 argumentos (fb, cx, cy, radio, r, g, b), se recibieron {}",
                 args.len()
-            ));
+            ), Vec::new());
         }
         let (mut buf, w, h) = match extraer_framebuffer(&args) {
             Ok(v) => v,
@@ -291,7 +294,7 @@ pub fn crear_modulo() -> Objeto {
             return Objeto::Error(format!(
                 "gpu.guardar: se esperaban 2 argumentos (fb, ruta), se recibieron {}",
                 args.len()
-            ));
+            ), Vec::new());
         }
         let (buf, w, h) = match extraer_framebuffer(&args) {
             Ok(v) => v,
@@ -309,10 +312,11 @@ pub fn crear_modulo() -> Objeto {
                     Objeto::Funcion { .. } | Objeto::Nativa(_) => "función",
                     Objeto::Retorno(_) => "retorno", Objeto::StructDef(_) => "struct_def",
                     Objeto::Instancia { .. } => "instancia", Objeto::Break => "break",
-                    Objeto::Continue => "continue", Objeto::Error(_) => "error",
+                    Objeto::Continue => "continue", Objeto::Error(_, _) => "error",
+                    Objeto::Canal(_) => "canal",
                     Objeto::Excepcion(_) => "excepcion",
                 }
-            )),
+            ), Vec::new()),
         };
 
         let mut ppm = Vec::with_capacity(w * h * 3 + 100);
@@ -327,7 +331,7 @@ pub fn crear_modulo() -> Objeto {
         }
         match std::fs::write(&ruta, &ppm) {
             Ok(_) => Objeto::Booleano(true),
-            Err(e) => Objeto::Error(format!("gpu.guardar: error al escribir '{}': {}", ruta, e)),
+            Err(e) => Objeto::Error(format!("gpu.guardar: error al escribir '{}': {}", ruta, e), Vec::new()),
         }
     }
 
@@ -336,7 +340,7 @@ pub fn crear_modulo() -> Objeto {
             return Objeto::Error(format!(
                 "gpu.mostrar: se esperaba 1 argumento (fb), se recibieron {}",
                 args.len()
-            ));
+            ), Vec::new());
         }
         let (buf, w, h) = match extraer_framebuffer(&args) {
             Ok(v) => v,
@@ -355,7 +359,7 @@ pub fn crear_modulo() -> Objeto {
             }
         }
         if std::fs::write(&ruta_tmp, &ppm).is_err() {
-            return Objeto::Error("gpu.mostrar: error al escribir archivo temporal".to_string());
+            return Objeto::Error("gpu.mostrar: error al escribir archivo temporal".to_string(), Vec::new());
         }
 
         let resultado = if cfg!(target_os = "macos") {
@@ -383,7 +387,7 @@ pub fn crear_modulo() -> Objeto {
             return Objeto::Error(format!(
                 "gpu.limpiar: se esperaban 4 argumentos (fb, r, g, b), se recibieron {}",
                 args.len()
-            ));
+            ), Vec::new());
         }
         let (mut buf, w, h) = match extraer_framebuffer(&args) {
             Ok(v) => v,

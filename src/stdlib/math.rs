@@ -8,14 +8,14 @@ fn extraer_f64(args: Vec<Objeto>) -> Result<f64, Objeto> {
     if args.len() != 1 {
         return Err(Objeto::Error(
             "Se esperaba 1 argumento numérico".to_string(),
-        ));
+        Vec::new()));
     }
     match &args[0] {
         Objeto::Entero(v) => Ok(*v as f64),
         Objeto::Flotante(v) => Ok(*v),
         _ => Err(Objeto::Error(
             "Se esperaba un número (entero o flotante)".to_string(),
-        )),
+        Vec::new())),
     }
 }
 
@@ -23,21 +23,21 @@ fn extraer_dos_f64(args: Vec<Objeto>) -> Result<(f64, f64), Objeto> {
     if args.len() != 2 {
         return Err(Objeto::Error(
             "Se esperaban 2 argumentos numéricos".to_string(),
-        ));
+        Vec::new()));
     }
     let a = match &args[0] {
         Objeto::Entero(v) => *v as f64,
         Objeto::Flotante(v) => *v,
         _ => return Err(Objeto::Error(
             "Ambos argumentos deben ser números".to_string(),
-        )),
+        Vec::new())),
     };
     let b = match &args[1] {
         Objeto::Entero(v) => *v as f64,
         Objeto::Flotante(v) => *v,
         _ => return Err(Objeto::Error(
             "Ambos argumentos deben ser números".to_string(),
-        )),
+        Vec::new())),
     };
     Ok((a, b))
 }
@@ -138,14 +138,14 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "Se esperaban 2 argumentos (min, max)".to_string(),
-            );
+            Vec::new());
         }
         let min = match &args[0] {
             Objeto::Entero(v) => *v,
             _ => {
                 return Objeto::Error(
                     "El primer argumento debe ser un entero".to_string(),
-                );
+                Vec::new());
             }
         };
         let max = match &args[1] {
@@ -153,13 +153,13 @@ pub fn crear_modulo() -> Objeto {
             _ => {
                 return Objeto::Error(
                     "El segundo argumento debe ser un entero".to_string(),
-                );
+                Vec::new());
             }
         };
         if min > max {
             return Objeto::Error(
                 "min debe ser menor o igual que max".to_string(),
-            );
+            Vec::new());
         }
         let semilla = SystemTime::now()
             .duration_since(UNIX_EPOCH)

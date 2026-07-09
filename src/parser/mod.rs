@@ -909,13 +909,28 @@ impl<'a> Parser<'a> {
         }
         self.avanzar();
 
-        // -- Paso 4: Parsear la lista de parámetros --
+        // -- Paso 4: Parsear la lista de parámetros (con tipos opcionales) --
         let mut parametros: Vec<String> = Vec::with_capacity(4);
+        let mut tipos_parametros: Vec<Option<String>> = Vec::with_capacity(4);
         if self.token_actual != Token::ParentesisCerrado {
             loop {
                 match self.avanzar() {
                     Token::Identificador(param) => {
+                        let tipo = if self.token_actual == Token::DosPuntos {
+                            self.avanzar();
+                            match self.avanzar() {
+                                Token::Identificador(t) => Some(t),
+                                _ => {
+                                    let mensaje = "Error de sintaxis: se esperaba un tipo después de ':'".to_string();
+                                    self.errores.push(self.error_ubicacion(mensaje));
+                                    return None;
+                                }
+                            }
+                        } else {
+                            None
+                        };
                         parametros.push(param);
+                        tipos_parametros.push(tipo);
                     }
                     _ => {
                         let mensaje = format!(
@@ -948,6 +963,21 @@ impl<'a> Parser<'a> {
         }
         self.avanzar();
 
+        // -- Paso 5b: Parsear tipo de retorno opcional `: Tipo` --
+        let tipo_retorno = if self.token_actual == Token::DosPuntos {
+            self.avanzar();
+            match self.avanzar() {
+                Token::Identificador(t) => Some(t),
+                _ => {
+                    let mensaje = "Error de sintaxis: se esperaba un tipo después de ':'".to_string();
+                    self.errores.push(self.error_ubicacion(mensaje));
+                    return None;
+                }
+            }
+        } else {
+            None
+        };
+
         // -- Paso 6: Parsear el cuerpo de la función --
         if self.token_actual != Token::LlaveAbierta {
             let mensaje = format!(
@@ -967,6 +997,8 @@ impl<'a> Parser<'a> {
             nombre,
             parametros,
             cuerpo,
+            tipos_parametros,
+            tipo_retorno,
         })
     }
 
@@ -1879,6 +1911,10 @@ impl<'a> Parser<'a> {
     // cada avanzar()). La clonación aloca heap (copia O(n)).
     fn parsear_import(&mut self) -> Option<Expression> {
         self.avanzar();
+        // Detectar `import { foo, bar } from "mod"`
+        if self.token_actual == Token::LlaveAbierta {
+            return self.parsear_import_selectivo();
+        }
         match self.avanzar() {
             Token::Cadena(ruta) => Some(Expression::Import(ruta)),
             _ => {
@@ -1888,6 +1924,55 @@ impl<'a> Parser<'a> {
                     self.token_actual
                 );
                 self.errores.push(self.error_ubicacion(mensaje));
+                None
+            }
+        }
+    }
+
+    /// Parsea `import { foo, bar } from "modulo"`
+    fn parsear_import_selectivo(&mut self) -> Option<Expression> {
+        // Ya consumimos `import`, token_actual es `{`
+        self.avanzar(); // consumir `{`
+        let mut nombres = Vec::new();
+        loop {
+            match &self.token_actual {
+                Token::Identificador(n) => {
+                    nombres.push(n.clone());
+                    self.avanzar();
+                    if self.token_actual == Token::Coma {
+                        self.avanzar();
+                    } else {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+        if self.token_actual != Token::LlaveCerrada {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba '}' después de la lista de importaciones".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar(); // consumir `}`
+        // Esperar `from`
+        if self.token_actual != Token::Identificador("from".to_string()) {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba 'from' después de '}'".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar(); // consumir `from`
+        // Esperar cadena con el módulo
+        match self.avanzar() {
+            Token::Cadena(modulo) => Some(Expression::ImportSelectivo {
+                nombres,
+                modulo,
+            }),
+            _ => {
+                self.errores.push(self.error_ubicacion(
+                    "Error de sintaxis: se esperaba una ruta de módulo como cadena después de 'from'".to_string(),
+                ));
                 None
             }
         }
@@ -1928,13 +2013,28 @@ impl<'a> Parser<'a> {
         }
         self.avanzar();
 
-        // Paso 3: Parsear la lista de parámetros.
+        // Paso 3: Parsear la lista de parámetros (con tipos opcionales).
         let mut parametros: Vec<String> = Vec::with_capacity(4);
+        let mut tipos_parametros: Vec<Option<String>> = Vec::with_capacity(4);
         if self.token_actual != Token::ParentesisCerrado {
             loop {
                 match self.avanzar() {
                     Token::Identificador(param) => {
+                        let tipo = if self.token_actual == Token::DosPuntos {
+                            self.avanzar();
+                            match self.avanzar() {
+                                Token::Identificador(t) => Some(t),
+                                _ => {
+                                    let mensaje = "Error de sintaxis: se esperaba un tipo después de ':'".to_string();
+                                    self.errores.push(self.error_ubicacion(mensaje));
+                                    return None;
+                                }
+                            }
+                        } else {
+                            None
+                        };
                         parametros.push(param);
+                        tipos_parametros.push(tipo);
                     }
                     _ => {
                         let mensaje = format!(
@@ -1969,6 +2069,21 @@ impl<'a> Parser<'a> {
         }
         self.avanzar();
 
+        // Paso 4b: Parsear tipo de retorno opcional `: Tipo`.
+        let tipo_retorno = if self.token_actual == Token::DosPuntos {
+            self.avanzar();
+            match self.avanzar() {
+                Token::Identificador(t) => Some(t),
+                _ => {
+                    let mensaje = "Error de sintaxis: se esperaba un tipo después de ':'".to_string();
+                    self.errores.push(self.error_ubicacion(mensaje));
+                    return None;
+                }
+            }
+        } else {
+            None
+        };
+
         // Paso 5: Esperar `{` para el cuerpo.
         if self.token_actual != Token::LlaveAbierta {
             let mensaje = format!(
@@ -1988,6 +2103,8 @@ impl<'a> Parser<'a> {
         Some(Expression::Funcion {
             parametros,
             cuerpo,
+            tipos_parametros,
+            tipo_retorno,
         })
     }
 

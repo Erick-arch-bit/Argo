@@ -27,7 +27,8 @@ fn tipo_objeto(o: &Objeto) -> &'static str {
         Objeto::Instancia { .. } => "instancia",
         Objeto::Break => "break",
         Objeto::Continue => "continue",
-        Objeto::Error(_) => "error",
+        Objeto::Error(_, _) => "error",
+        Objeto::Canal(_) => "canal",
         Objeto::Excepcion(_) => "excepcion",
     }
 }
@@ -41,7 +42,7 @@ pub fn crear_modulo() -> Objeto {
             return Objeto::Error(format!(
                 "thread.spawn: se esperaba 1 argumento (codigo_fuente), se recibieron {}",
                 args.len()
-            ));
+            ), Vec::new());
         }
 
         let codigo = match &args[0] {
@@ -50,14 +51,14 @@ pub fn crear_modulo() -> Objeto {
                 return Objeto::Error(format!(
                     "thread.spawn: el argumento debe ser una cadena (código fuente), se recibió {}",
                     tipo_objeto(other)
-                ));
+                ), Vec::new());
             }
         };
 
         if codigo.is_empty() {
             return Objeto::Error(
                 "thread.spawn: el código fuente no puede estar vacío".to_string(),
-            );
+            Vec::new());
         }
 
         thread::spawn(move || {
@@ -77,7 +78,7 @@ pub fn crear_modulo() -> Objeto {
 
                 let resultado = evaluar_programa(&programa, entorno);
 
-                if matches!(resultado, Objeto::Error(_) | Objeto::Excepcion(_)) {
+                if matches!(resultado, Objeto::Error(_, _) | Objeto::Excepcion(_)) {
                     eprintln!("[hilo] error en ejecución: {}", resultado);
                 }
             }));

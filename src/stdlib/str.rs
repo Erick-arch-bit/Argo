@@ -7,13 +7,13 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (cadena)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Cadena(c) => Objeto::Entero(c.len() as i64),
             _ => Objeto::Error(
                 "El argumento debe ser una cadena".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -21,13 +21,13 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (cadena)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Cadena(c) => Objeto::Cadena(c.to_uppercase()),
             _ => Objeto::Error(
                 "El argumento debe ser una cadena".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -35,13 +35,13 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (cadena)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Cadena(c) => Objeto::Cadena(c.to_lowercase()),
             _ => Objeto::Error(
                 "El argumento debe ser una cadena".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -49,13 +49,13 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (cadena)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Cadena(c) => Objeto::Cadena(c.trim().to_string()),
             _ => Objeto::Error(
                 "El argumento debe ser una cadena".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -63,14 +63,14 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "Se esperaban 2 argumentos (cadena, separador)".to_string(),
-            );
+            Vec::new());
         }
         let cadena = match &args[0] {
             Objeto::Cadena(c) => c.clone(),
             _ => {
                 return Objeto::Error(
                     "El primer argumento debe ser una cadena".to_string(),
-                );
+                Vec::new());
             }
         };
         let separador = match &args[1] {
@@ -78,7 +78,7 @@ pub fn crear_modulo() -> Objeto {
             _ => {
                 return Objeto::Error(
                     "El separador debe ser una cadena".to_string(),
-                );
+                Vec::new());
             }
         };
         let partes: Vec<Objeto> = cadena
@@ -92,7 +92,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "Se esperaban 2 argumentos (cadena, subcadena)".to_string(),
-            );
+            Vec::new());
         }
         match (&args[0], &args[1]) {
             (Objeto::Cadena(c), Objeto::Cadena(sub)) => {
@@ -100,7 +100,7 @@ pub fn crear_modulo() -> Objeto {
             }
             _ => Objeto::Error(
                 "Ambos argumentos deben ser cadenas".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -108,14 +108,14 @@ pub fn crear_modulo() -> Objeto {
         if args.len() < 2 || args.len() > 3 {
             return Objeto::Error(
                 "Se esperaban 2 o 3 argumentos (cadena, inicio, fin?)".to_string(),
-            );
+            Vec::new());
         }
         let cadena = match &args[0] {
             Objeto::Cadena(c) => c.clone(),
             _ => {
                 return Objeto::Error(
                     "El primer argumento debe ser una cadena".to_string(),
-                );
+                Vec::new());
             }
         };
         let inicio = match &args[1] {
@@ -123,14 +123,14 @@ pub fn crear_modulo() -> Objeto {
                 if *i < 0 {
                     return Objeto::Error(
                         "El índice de inicio no puede ser negativo".to_string(),
-                    );
+                    Vec::new());
                 }
                 *i as usize
             }
             _ => {
                 return Objeto::Error(
                     "El segundo argumento debe ser un entero (inicio)".to_string(),
-                );
+                Vec::new());
             }
         };
         let fin = if args.len() == 3 {
@@ -139,14 +139,14 @@ pub fn crear_modulo() -> Objeto {
                     if *i < 0 {
                         return Objeto::Error(
                             "El índice de fin no puede ser negativo".to_string(),
-                        );
+                        Vec::new());
                     }
                     Some(*i as usize)
                 }
                 _ => {
                     return Objeto::Error(
                         "El tercer argumento debe ser un entero (fin)".to_string(),
-                    );
+                    Vec::new());
                 }
             }
         } else {
@@ -168,14 +168,14 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 3 {
             return Objeto::Error(
                 "Se esperaban 3 argumentos (cadena, objetivo, reemplazo)".to_string(),
-            );
+            Vec::new());
         }
         let cadena = match &args[0] {
             Objeto::Cadena(c) => c.clone(),
             _ => {
                 return Objeto::Error(
                     "El primer argumento debe ser una cadena".to_string(),
-                );
+                Vec::new());
             }
         };
         let objetivo = match &args[1] {
@@ -183,7 +183,7 @@ pub fn crear_modulo() -> Objeto {
             _ => {
                 return Objeto::Error(
                     "El objetivo debe ser una cadena".to_string(),
-                );
+                Vec::new());
             }
         };
         let reemplazo = match &args[2] {
@@ -191,7 +191,7 @@ pub fn crear_modulo() -> Objeto {
             _ => {
                 return Objeto::Error(
                     "El reemplazo debe ser una cadena".to_string(),
-                );
+                Vec::new());
             }
         };
         Objeto::Cadena(cadena.replace(&objetivo, &reemplazo))
@@ -201,7 +201,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "Se esperaban 2 argumentos (cadena, prefijo)".to_string(),
-            );
+            Vec::new());
         }
         match (&args[0], &args[1]) {
             (Objeto::Cadena(c), Objeto::Cadena(prefijo)) => {
@@ -209,7 +209,7 @@ pub fn crear_modulo() -> Objeto {
             }
             _ => Objeto::Error(
                 "Ambos argumentos deben ser cadenas".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -217,7 +217,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "Se esperaban 2 argumentos (cadena, sufijo)".to_string(),
-            );
+            Vec::new());
         }
         match (&args[0], &args[1]) {
             (Objeto::Cadena(c), Objeto::Cadena(sufijo)) => {
@@ -225,7 +225,7 @@ pub fn crear_modulo() -> Objeto {
             }
             _ => Objeto::Error(
                 "Ambos argumentos deben ser cadenas".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -233,25 +233,25 @@ pub fn crear_modulo() -> Objeto {
         if args.len() < 2 || args.len() > 3 {
             return Objeto::Error(
                 "Se esperaban 2 o 3 argumentos (cadena, subcadena, inicio?)".to_string(),
-            );
+            Vec::new());
         }
         let cadena = match &args[0] {
             Objeto::Cadena(c) => c.clone(),
-            _ => return Objeto::Error("El primer argumento debe ser una cadena".to_string()),
+            _ => return Objeto::Error("El primer argumento debe ser una cadena".to_string(), Vec::new()),
         };
         let subcadena = match &args[1] {
             Objeto::Cadena(s) => s.clone(),
-            _ => return Objeto::Error("La subcadena debe ser una cadena".to_string()),
+            _ => return Objeto::Error("La subcadena debe ser una cadena".to_string(), Vec::new()),
         };
         let inicio: usize = if args.len() == 3 {
             match &args[2] {
                 Objeto::Entero(i) => {
                     if *i < 0 {
-                        return Objeto::Error("El inicio no puede ser negativo".to_string());
+                        return Objeto::Error("El inicio no puede ser negativo".to_string(), Vec::new());
                     }
                     *i as usize
                 }
-                _ => return Objeto::Error("El inicio debe ser un entero".to_string()),
+                _ => return Objeto::Error("El inicio debe ser un entero".to_string(), Vec::new()),
             }
         } else {
             0
@@ -269,13 +269,13 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (cadena)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Cadena(c) => {
                 Objeto::Cadena(c.chars().rev().collect::<String>())
             }
-            _ => Objeto::Error("El argumento debe ser una cadena".to_string()),
+            _ => Objeto::Error("El argumento debe ser una cadena".to_string(), Vec::new()),
         }
     }
 
@@ -283,20 +283,20 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "Se esperaban 2 argumentos (cadena, veces)".to_string(),
-            );
+            Vec::new());
         }
         let cadena = match &args[0] {
             Objeto::Cadena(c) => c.clone(),
-            _ => return Objeto::Error("El primer argumento debe ser una cadena".to_string()),
+            _ => return Objeto::Error("El primer argumento debe ser una cadena".to_string(), Vec::new()),
         };
         let veces = match &args[1] {
             Objeto::Entero(n) => {
                 if *n < 0 {
-                    return Objeto::Error("Las veces no puede ser negativo".to_string());
+                    return Objeto::Error("Las veces no puede ser negativo".to_string(), Vec::new());
                 }
                 *n as usize
             }
-            _ => return Objeto::Error("El segundo argumento debe ser un entero".to_string()),
+            _ => return Objeto::Error("El segundo argumento debe ser un entero".to_string(), Vec::new()),
         };
         Objeto::Cadena(cadena.repeat(veces))
     }
@@ -305,7 +305,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (cadena)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Cadena(c) => {
@@ -314,7 +314,7 @@ pub fn crear_modulo() -> Objeto {
                     .collect();
                 Objeto::Arreglo(chars)
             }
-            _ => Objeto::Error("El argumento debe ser una cadena".to_string()),
+            _ => Objeto::Error("El argumento debe ser una cadena".to_string(), Vec::new()),
         }
     }
 
@@ -322,22 +322,22 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "Se esperaban 2 argumentos (cadena, indice)".to_string(),
-            );
+            Vec::new());
         }
         let cadena = match &args[0] {
             Objeto::Cadena(c) => c.clone(),
-            _ => return Objeto::Error("El primer argumento debe ser una cadena".to_string()),
+            _ => return Objeto::Error("El primer argumento debe ser una cadena".to_string(), Vec::new()),
         };
         let indice = match &args[1] {
             Objeto::Entero(i) => {
-                if *i < 0 { return Objeto::Error("El índice no puede ser negativo".to_string()); }
+                if *i < 0 { return Objeto::Error("El índice no puede ser negativo".to_string(), Vec::new()); }
                 *i as usize
             }
-            _ => return Objeto::Error("El segundo argumento debe ser un entero".to_string()),
+            _ => return Objeto::Error("El segundo argumento debe ser un entero".to_string(), Vec::new()),
         };
         match cadena.chars().nth(indice) {
             Some(ch) => Objeto::Entero(ch as i64),
-            None => Objeto::Error("Índice fuera de rango".to_string()),
+            None => Objeto::Error("Índice fuera de rango".to_string(), Vec::new()),
         }
     }
 
@@ -345,15 +345,15 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (código)".to_string(),
-            );
+            Vec::new());
         }
         let codigo = match &args[0] {
             Objeto::Entero(c) => *c as u32,
-            _ => return Objeto::Error("El argumento debe ser un entero (código Unicode)".to_string()),
+            _ => return Objeto::Error("El argumento debe ser un entero (código Unicode)".to_string(), Vec::new()),
         };
         match char::from_u32(codigo) {
             Some(ch) => Objeto::Cadena(ch.to_string()),
-            None => Objeto::Error(format!("Código Unicode inválido: {}", codigo)),
+            None => Objeto::Error(format!("Código Unicode inválido: {}", codigo), Vec::new()),
         }
     }
 

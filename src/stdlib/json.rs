@@ -331,14 +331,14 @@ fn json_parsear(args: Vec<Objeto>) -> Objeto {
     if args.len() != 1 {
         return Objeto::Error(
             "Se esperaba 1 argumento (cadena JSON)".to_string(),
-        );
+        Vec::new());
     }
     let texto = match &args[0] {
         Objeto::Cadena(s) => s.clone(),
         _ => {
             return Objeto::Error(
                 "El argumento debe ser una cadena".to_string(),
-            );
+            Vec::new());
         }
     };
 
@@ -352,7 +352,7 @@ fn json_parsear(args: Vec<Objeto>) -> Objeto {
     let mut parser = JsonParser::nuevo(recortado);
     match parser.parsear_valor(0) {
         Ok(valor) => valor,
-        Err(e) => Objeto::Error(e),
+        Err(e) => Objeto::Error(e, Vec::new()),
     }
 }
 
@@ -361,7 +361,7 @@ fn json_stringificar(args: Vec<Objeto>) -> Objeto {
     if args.len() != 1 {
         return Objeto::Error(
             "Se esperaba 1 argumento".to_string(),
-        );
+        Vec::new());
     }
     let json = json_stringificar_valor(&args[0]);
     Objeto::Cadena(json)

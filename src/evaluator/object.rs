@@ -5,6 +5,8 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 
 // Importaciones necesarias para Objeto::Funcion:
 // Statement (nodo AST del cuerpo) y Entorno (entorno capturado
@@ -12,6 +14,18 @@ use std::fmt;
 // dependencias externas. La ruta completa evita ambigüedades.
 use crate::ast::Statement;
 use crate::evaluator::Entorno;
+
+// ---------------------------------------------------------------------------
+// CanalArgo — Canal de comunicación bidireccional (mpsc)
+// ---------------------------------------------------------------------------
+// Envuelve un par (sender, receiver) de mpsc de Rust. El sender se usa
+// para enviar valores al canal, el receiver para recibirlos. Ambos se
+// comparten vía Arc para que múltiples referencias al mismo canal
+// (clonaciones de Objeto::Canal) apunten al mismo par subyacente.
+pub struct CanalArgo {
+    pub transmisor: mpsc::Sender<Objeto>,
+    pub receptor: Mutex<mpsc::Receiver<Objeto>>,
+}
 
 // ---------------------------------------------------------------------------
 // LlaveHash — Tipos de datos utilizables como claves de diccionario
@@ -106,11 +120,9 @@ pub enum Objeto {
     // Se consume dentro del bucle (no se propaga al exterior).
     Continue,
 
-    // Error(String) — Representa un error en tiempo de ejecución.
-    // String aloca en el heap (misma mecánica que Cadena). El mensaje
-    // de error vive en heap y se libera cuando el Objeto::Error se dropea.
-    // Esta variante permite manejar errores sin usar panic! ni unwrap().
-    Error(String),
+    // Error(String, Vec<String>) — Representa un error en tiempo de ejecución
+    // con su traceback asociado (pila de llamadas).
+    Error(String, Vec<String>),
 
     // Excepcion(Box<Objeto>) — Representa un valor lanzado con `throw`.
     // A diferencia de Error (que siempre es un String), Excepción puede
@@ -175,6 +187,11 @@ pub enum Objeto {
     // está soportado nativamente (evaluar_acceso_indice).
     Buffer(Vec<u8>),
 
+    // Canal — Canal de comunicación entre corrutinas/hilos.
+    // Comparte el par (sender, receiver) vía Arc para que todas
+    // las clonaciones de este objeto refieran al mismo canal.
+    Canal(Arc<CanalArgo>),
+
     // StructDef — Definición de un struct (template de campos)
     // Se almacena en el entorno global cuando se declara `struct Punto { x, y }`.
     StructDef(Vec<String>),
@@ -220,6 +237,7 @@ pub enum Objeto {
         parametros: Vec<String>,
         cuerpo: Box<Statement>,
         entorno: Entorno,
+        nombre: Option<String>,
     },
 }
 
@@ -248,13 +266,14 @@ impl Objeto {
                 Err("Las claves de diccionario no pueden ser funciones".to_string())
             }
             Objeto::Buffer(_) => Err("Las claves de diccionario no pueden ser buffers".to_string()),
+            Objeto::Canal(_) => Err("Las claves de diccionario no pueden ser canales".to_string()),
             Objeto::StructDef(_) => Err("Las claves de diccionario no pueden ser definiciones de struct".to_string()),
             Objeto::Instancia { .. } => Err("Las claves de diccionario no pueden ser instancias de struct".to_string()),
             Objeto::Nulo => Err("Las claves de diccionario no pueden ser nulo".to_string()),
             Objeto::Retorno(_) => Err("Las claves de diccionario no pueden ser retornos".to_string()),
             Objeto::Break => Err("Las claves de diccionario no pueden ser break".to_string()),
             Objeto::Continue => Err("Las claves de diccionario no pueden ser continue".to_string()),
-            Objeto::Error(_) => Err("Las claves de diccionario no pueden ser errores".to_string()),
+            Objeto::Error(_, _) => Err("Las claves de diccionario no pueden ser errores".to_string()),
             Objeto::Excepcion(_) => {
                 Err("Las claves de diccionario no pueden ser excepciones".to_string())
             }
@@ -279,12 +298,13 @@ impl Objeto {
             (Objeto::Nulo, Objeto::Nulo) => true,
             (Objeto::Break, Objeto::Break) => true,
             (Objeto::Continue, Objeto::Continue) => true,
-            (Objeto::Error(a), Objeto::Error(b)) => a == b,
+            (Objeto::Error(a, _), Objeto::Error(b, _)) => a == b,
             (Objeto::Excepcion(a), Objeto::Excepcion(b)) => a.son_iguales(b),
             (Objeto::Arreglo(a), Objeto::Arreglo(b)) => {
                 a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x.son_iguales(y))
             }
             (Objeto::Buffer(a), Objeto::Buffer(b)) => a == b,
+            (Objeto::Canal(a), Objeto::Canal(b)) => Arc::ptr_eq(a, b),
             (Objeto::StructDef(a), Objeto::StructDef(b)) => a == b,
             (Objeto::Instancia { nombre: na, campos: ca }, Objeto::Instancia { nombre: nb, campos: cb }) => {
                 na == nb
@@ -299,7 +319,7 @@ impl Objeto {
     /// Tanto `Error(String)` como `Excepcion(Box<Objeto>)` interrumpen
     /// el flujo normal de evaluación y deben ser propagados.
     pub fn es_error(&self) -> bool {
-        matches!(self, Objeto::Error(_) | Objeto::Excepcion(_))
+        matches!(self, Objeto::Error(_, _) | Objeto::Excepcion(_))
     }
 }
 
@@ -360,13 +380,31 @@ impl fmt::Display for Objeto {
             // Continue: no imprime nada (señal de control interna).
             Objeto::Continue => Ok(()),
 
-            // Error: imprime el mensaje con prefijo "error: " para
-            // distinguirlo visualmente de otros valores. El String
-            // interno se muestra por referencia (no se mueve ni clona).
-            Objeto::Error(mensaje) => write!(f, "error: {}", mensaje),
+            // Error: imprime el mensaje con prefijo "error: " y
+            // el traceback de la pila de llamadas (si hay).
+            Objeto::Error(mensaje, traza) => {
+                write!(f, "error: {}", mensaje)?;
+                for func in traza.iter().rev() {
+                    let _ = writeln!(f, "");
+                    let _ = write!(f, "  en {}()", func);
+                }
+                Ok(())
+            }
 
             // Excepcion: imprime el valor lanzado con prefijo "excepción: ".
-            Objeto::Excepcion(valor) => write!(f, "excepción: {}", valor),
+            Objeto::Excepcion(valor) => {
+                write!(f, "excepción: {}", valor)?;
+                crate::evaluator::PILA_TRACEBACK.with(|pila| {
+                    let pila = pila.borrow();
+                    if !pila.is_empty() {
+                        for func in pila.iter().rev() {
+                            let _ = writeln!(f, "");
+                            let _ = write!(f, "  en {}()", func);
+                        }
+                    }
+                });
+                Ok(())
+            }
 
             // Nativa: función built-in del sistema. No tiene nombre
             // asociado (es un puntero anónimo). Se imprime un texto
@@ -421,6 +459,11 @@ impl fmt::Display for Objeto {
                 write!(f, "<Buffer {} bytes>", bytes.len())
             }
 
+            // Canal: muestra un identificador único del canal.
+            Objeto::Canal(_) => {
+                write!(f, "<Canal>")
+            }
+
             // Funcion: mostrar un resumen informativo. No se imprime
             // el contenido del cuerpo ni del entorno capturado porque
             // sería excesivamente verboso. &self.parametros presta el
@@ -430,13 +473,11 @@ impl fmt::Display for Objeto {
                 parametros,
                 cuerpo: _cuerpo,
                 entorno: _entorno,
+                nombre,
             } => {
-                // Se usa Debug para imprimir la lista de parámetros.
-                // El cuerpo y entorno se omiten (no son relevantes
-                // para la consola del usuario). El Pattern Matching
-                // con _ descarta los campos no usados; Rust no los
-                // mueve porque estamos en un match por referencia (&self).
-                write!(f, "[Función definida por el usuario]({})",
+                let nom = nombre.as_deref().unwrap_or("anon");
+                write!(f, "[Función {}({})]",
+                    nom,
                     format!("{:?}", parametros)
                         .trim_start_matches('[')
                         .trim_end_matches(']'))

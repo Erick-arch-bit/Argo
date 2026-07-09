@@ -7,13 +7,13 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "arr.len: se esperaba 1 argumento (arreglo)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Arreglo(a) => Objeto::Entero(a.len() as i64),
             _ => Objeto::Error(
                 "arr.len: el argumento debe ser un arreglo".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -21,7 +21,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "arr.push: se esperaban 2 argumentos (arreglo, elemento)".to_string(),
-            );
+            Vec::new());
         }
         let mut args_iter = args.into_iter();
         let arreglo = args_iter.next().unwrap();
@@ -33,7 +33,7 @@ pub fn crear_modulo() -> Objeto {
             }
             _ => Objeto::Error(
                 "arr.push: el primer argumento debe ser un arreglo".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -41,7 +41,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "arr.pop: se esperaba 1 argumento (arreglo)".to_string(),
-            );
+            Vec::new());
         }
         match args.into_iter().next().unwrap() {
             Objeto::Arreglo(mut v) => {
@@ -59,7 +59,7 @@ pub fn crear_modulo() -> Objeto {
             }
             _ => Objeto::Error(
                 "arr.pop: el argumento debe ser un arreglo".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -67,7 +67,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "arr.contiene: se esperaban 2 argumentos (arreglo, elemento)".to_string(),
-            );
+            Vec::new());
         }
         match (&args[0], &args[1]) {
             (Objeto::Arreglo(v), elemento) => {
@@ -75,7 +75,7 @@ pub fn crear_modulo() -> Objeto {
             }
             _ => Objeto::Error(
                 "arr.contiene: el primer argumento debe ser un arreglo".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -83,7 +83,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "arr.invertir: se esperaba 1 argumento (arreglo)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Arreglo(v) => {
@@ -93,7 +93,7 @@ pub fn crear_modulo() -> Objeto {
             }
             _ => Objeto::Error(
                 "arr.invertir: el argumento debe ser un arreglo".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -101,13 +101,13 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "arr.primero: se esperaba 1 argumento (arreglo)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Arreglo(v) => v.first().cloned().unwrap_or(Objeto::Nulo),
             _ => Objeto::Error(
                 "arr.primero: el argumento debe ser un arreglo".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -115,13 +115,13 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "arr.ultimo: se esperaba 1 argumento (arreglo)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Arreglo(v) => v.last().cloned().unwrap_or(Objeto::Nulo),
             _ => Objeto::Error(
                 "arr.ultimo: el argumento debe ser un arreglo".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -129,7 +129,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "arr.concatenar: se esperaban 2 argumentos (arreglo1, arreglo2)".to_string(),
-            );
+            Vec::new());
         }
         match (&args[0], &args[1]) {
             (Objeto::Arreglo(a), Objeto::Arreglo(b)) => {
@@ -139,7 +139,7 @@ pub fn crear_modulo() -> Objeto {
             }
             _ => Objeto::Error(
                 "arr.concatenar: ambos argumentos deben ser arreglos".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -147,13 +147,13 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "arr.vacio: se esperaba 1 argumento (arreglo)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Arreglo(v) => Objeto::Booleano(v.is_empty()),
             _ => Objeto::Error(
                 "arr.vacio: el argumento debe ser un arreglo".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -161,7 +161,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "arr.indice_de: se esperaban 2 argumentos (arreglo, elemento)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Arreglo(v) => {
@@ -173,7 +173,7 @@ pub fn crear_modulo() -> Objeto {
             }
             _ => Objeto::Error(
                 "arr.indice_de: el primer argumento debe ser un arreglo".to_string(),
-            ),
+            Vec::new()),
         }
     }
 
@@ -182,13 +182,13 @@ pub fn crear_modulo() -> Objeto {
             Objeto::Funcion { .. } | Objeto::Nativa(_) => {
                 evaluar_llamada_funcion(closure.clone(), vec![arg])
             }
-            _ => Objeto::Error("Se esperaba una función como argumento".to_string()),
+            _ => Objeto::Error("Se esperaba una función como argumento".to_string(), Vec::new()),
         }
     }
 
     fn arr_map(args: Vec<Objeto>) -> Objeto {
         if args.len() != 2 {
-            return Objeto::Error("arr.map: se esperaban 2 argumentos (arreglo, función)".to_string());
+            return Objeto::Error("arr.map: se esperaban 2 argumentos (arreglo, función)".to_string(), Vec::new());
         }
         let (arr, closure) = (&args[0], &args[1]);
         match arr {
@@ -196,18 +196,18 @@ pub fn crear_modulo() -> Objeto {
                 let mut resultado = Vec::with_capacity(v.len());
                 for elem in v {
                     let res = llamar_con(closure, elem.clone());
-                    if let Objeto::Error(_) = &res { return res }
+                    if let Objeto::Error(_, _) = &res { return res }
                     resultado.push(res);
                 }
                 Objeto::Arreglo(resultado)
             }
-            _ => Objeto::Error("arr.map: el primer argumento debe ser un arreglo".to_string()),
+            _ => Objeto::Error("arr.map: el primer argumento debe ser un arreglo".to_string(), Vec::new()),
         }
     }
 
     fn arr_filter(args: Vec<Objeto>) -> Objeto {
         if args.len() != 2 {
-            return Objeto::Error("arr.filter: se esperaban 2 argumentos (arreglo, función)".to_string());
+            return Objeto::Error("arr.filter: se esperaban 2 argumentos (arreglo, función)".to_string(), Vec::new());
         }
         let (arr, closure) = (&args[0], &args[1]);
         match arr {
@@ -215,20 +215,20 @@ pub fn crear_modulo() -> Objeto {
                 let mut resultado = Vec::new();
                 for elem in v {
                     let res = llamar_con(closure, elem.clone());
-                    if let Objeto::Error(_) = &res { return res }
+                    if let Objeto::Error(_, _) = &res { return res }
                     if es_truthy(&res) {
                         resultado.push(elem.clone());
                     }
                 }
                 Objeto::Arreglo(resultado)
             }
-            _ => Objeto::Error("arr.filter: el primer argumento debe ser un arreglo".to_string()),
+            _ => Objeto::Error("arr.filter: el primer argumento debe ser un arreglo".to_string(), Vec::new()),
         }
     }
 
     fn arr_reduce(args: Vec<Objeto>) -> Objeto {
         if args.len() < 2 || args.len() > 3 {
-            return Objeto::Error("arr.reduce: se esperaban 2-3 argumentos (arreglo, función, inicial?)".to_string());
+            return Objeto::Error("arr.reduce: se esperaban 2-3 argumentos (arreglo, función, inicial?)".to_string(), Vec::new());
         }
         let mut iter = args.into_iter();
         let arreglo = iter.next().unwrap();
@@ -242,74 +242,74 @@ pub fn crear_modulo() -> Objeto {
                         Objeto::Funcion { .. } | Objeto::Nativa(_) => {
                             evaluar_llamada_funcion(closure.clone(), vec![acc, elem.clone()])
                         }
-                        _ => return Objeto::Error("arr.reduce: se esperaba una función".to_string()),
+                        _ => return Objeto::Error("arr.reduce: se esperaba una función".to_string(), Vec::new()),
                     };
-                    if let Objeto::Error(_) = &res { return res }
+                    if let Objeto::Error(_, _) = &res { return res }
                     acc = res;
                 }
                 acc
             }
-            _ => Objeto::Error("arr.reduce: el primer argumento debe ser un arreglo".to_string()),
+            _ => Objeto::Error("arr.reduce: el primer argumento debe ser un arreglo".to_string(), Vec::new()),
         }
     }
 
     fn arr_find(args: Vec<Objeto>) -> Objeto {
         if args.len() != 2 {
-            return Objeto::Error("arr.find: se esperaban 2 argumentos (arreglo, función)".to_string());
+            return Objeto::Error("arr.find: se esperaban 2 argumentos (arreglo, función)".to_string(), Vec::new());
         }
         let (arr, closure) = (&args[0], &args[1]);
         match arr {
             Objeto::Arreglo(v) => {
                 for elem in v {
                     let res = llamar_con(closure, elem.clone());
-                    if let Objeto::Error(_) = &res { return res }
+                    if let Objeto::Error(_, _) = &res { return res }
                     if es_truthy(&res) {
                         return elem.clone();
                     }
                 }
                 Objeto::Nulo
             }
-            _ => Objeto::Error("arr.find: el primer argumento debe ser un arreglo".to_string()),
+            _ => Objeto::Error("arr.find: el primer argumento debe ser un arreglo".to_string(), Vec::new()),
         }
     }
 
     fn arr_every(args: Vec<Objeto>) -> Objeto {
         if args.len() != 2 {
-            return Objeto::Error("arr.every: se esperaban 2 argumentos (arreglo, función)".to_string());
+            return Objeto::Error("arr.every: se esperaban 2 argumentos (arreglo, función)".to_string(), Vec::new());
         }
         let (arr, closure) = (&args[0], &args[1]);
         match arr {
             Objeto::Arreglo(v) => {
                 for elem in v {
                     let res = llamar_con(closure, elem.clone());
-                    if let Objeto::Error(_) = &res { return res }
+                    if let Objeto::Error(_, _) = &res { return res }
                     if !es_truthy(&res) {
                         return Objeto::Booleano(false);
                     }
                 }
                 Objeto::Booleano(true)
             }
-            _ => Objeto::Error("arr.every: el primer argumento debe ser un arreglo".to_string()),
+            _ => Objeto::Error("arr.every: el primer argumento debe ser un arreglo".to_string(), Vec::new()),
         }
     }
 
     fn arr_some(args: Vec<Objeto>) -> Objeto {
         if args.len() != 2 {
-            return Objeto::Error("arr.some: se esperaban 2 argumentos (arreglo, función)".to_string());
+            return Objeto::Error("arr.some: se esperaban 2 argumentos (arreglo, función)".to_string(), Vec::new());
         }
         let (arr, closure) = (&args[0], &args[1]);
         match arr {
             Objeto::Arreglo(v) => {
                 for elem in v {
                     let res = llamar_con(closure, elem.clone());
-                    if let Objeto::Error(_) = &res { return res }
+                    if let Objeto::Error(_, _) = &res { return res }
                     if es_truthy(&res) {
                         return Objeto::Booleano(true);
                     }
                 }
                 Objeto::Booleano(false)
             }
-            _ => Objeto::Error("arr.some: el primer argumento debe ser un arreglo".to_string()),
+            _ => Objeto::Error("arr.some: el primer argumento debe ser un arreglo".to_string(), Vec::new()),
         }
     }
 
@@ -325,7 +325,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "arr.plano: se esperaba 1 argumento (arreglo)".to_string(),
-            );
+            Vec::new());
         }
         match &args[0] {
             Objeto::Arreglo(v) => {
@@ -342,7 +342,7 @@ pub fn crear_modulo() -> Objeto {
             }
             _ => Objeto::Error(
                 "arr.plano: el argumento debe ser un arreglo".to_string(),
-            ),
+            Vec::new()),
         }
     }
 

@@ -24,7 +24,7 @@ fn validar_ruta(args: &[Objeto], idx: usize) -> Result<String, Objeto> {
                     "Error de seguridad: Acceso denegado. \
                      La ruta intenta escapar del directorio \
                      de trabajo o es absoluta.".to_string(),
-                ))
+                Vec::new()))
             } else {
                 Ok(r.clone())
             }
@@ -46,13 +46,14 @@ fn validar_ruta(args: &[Objeto], idx: usize) -> Result<String, Objeto> {
                 Objeto::Instancia { .. } => "instancia",
                 Objeto::Break => "break",
                 Objeto::Continue => "continue",
-                Objeto::Error(_) => "error",
+                Objeto::Error(_, _) => "error",
+                Objeto::Canal(_) => "canal",
                 Objeto::Excepcion(_) => "excepcion",
             }
-        ))),
+        ), Vec::new())),
         None => Err(Objeto::Error(format!(
             "fs: falta el argumento ruta en posición {}", idx
-        ))),
+        ), Vec::new())),
     }
 }
 
@@ -61,7 +62,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (ruta)".to_string(),
-            );
+            Vec::new());
         }
         let ruta = match validar_ruta(&args, 0) {
             Ok(r) => r,
@@ -71,7 +72,7 @@ pub fn crear_modulo() -> Objeto {
             Ok(contenido) => Objeto::Cadena(contenido),
             Err(e) => Objeto::Error(format!(
                 "Error al leer el archivo {}: {}", ruta, e
-            )),
+            ), Vec::new()),
         }
     }
 
@@ -79,7 +80,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 2 {
             return Objeto::Error(
                 "Se esperaban 2 argumentos (ruta, contenido)".to_string(),
-            );
+            Vec::new());
         }
         let ruta = match validar_ruta(&args, 0) {
             Ok(r) => r,
@@ -89,13 +90,13 @@ pub fn crear_modulo() -> Objeto {
             Objeto::Cadena(c) => c.clone(),
             _ => return Objeto::Error(
                 "El segundo argumento debe ser una cadena (contenido)".to_string(),
-            ),
+            Vec::new()),
         };
         match std::fs::write(&ruta, &contenido) {
             Ok(_) => Objeto::Booleano(true),
             Err(e) => Objeto::Error(format!(
                 "Error al escribir el archivo {}: {}", ruta, e
-            )),
+            ), Vec::new()),
         }
     }
 
@@ -103,7 +104,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (ruta)".to_string(),
-            );
+            Vec::new());
         }
         let ruta = match validar_ruta(&args, 0) {
             Ok(r) => r,
@@ -116,7 +117,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (ruta)".to_string(),
-            );
+            Vec::new());
         }
         let ruta = match validar_ruta(&args, 0) {
             Ok(r) => r,
@@ -129,7 +130,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (ruta)".to_string(),
-            );
+            Vec::new());
         }
         let ruta = match validar_ruta(&args, 0) {
             Ok(r) => r,
@@ -142,7 +143,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (ruta)".to_string(),
-            );
+            Vec::new());
         }
         let ruta = match validar_ruta(&args, 0) {
             Ok(r) => r,
@@ -152,7 +153,7 @@ pub fn crear_modulo() -> Objeto {
             Ok(_) => Objeto::Booleano(true),
             Err(e) => Objeto::Error(format!(
                 "Error al eliminar {}: {}", ruta, e
-            )),
+            ), Vec::new()),
         }
     }
 
@@ -160,7 +161,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (ruta)".to_string(),
-            );
+            Vec::new());
         }
         let ruta = match validar_ruta(&args, 0) {
             Ok(r) => r,
@@ -170,7 +171,7 @@ pub fn crear_modulo() -> Objeto {
             Ok(_) => Objeto::Booleano(true),
             Err(e) => Objeto::Error(format!(
                 "Error al crear directorio {}: {}", ruta, e
-            )),
+            ), Vec::new()),
         }
     }
 
@@ -178,7 +179,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (ruta)".to_string(),
-            );
+            Vec::new());
         }
         let ruta = match validar_ruta(&args, 0) {
             Ok(r) => r,
@@ -199,7 +200,7 @@ pub fn crear_modulo() -> Objeto {
             }
             Err(e) => Objeto::Error(format!(
                 "Error al listar {}: {}", ruta, e
-            )),
+            ), Vec::new()),
         }
     }
 

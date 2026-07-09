@@ -9,13 +9,13 @@ pub fn crear_modulo() -> Objeto {
         if !args.is_empty() {
             return Objeto::Error(
                 "La función now no recibe argumentos".to_string(),
-            );
+            Vec::new());
         }
         match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(d) => Objeto::Entero(d.as_millis() as i64),
             Err(e) => Objeto::Error(format!(
                 "Error al obtener el tiempo: {}", e
-            )),
+            ), Vec::new()),
         }
     }
 
@@ -23,7 +23,7 @@ pub fn crear_modulo() -> Objeto {
         if args.len() != 1 {
             return Objeto::Error(
                 "Se esperaba 1 argumento (milisegundos)".to_string(),
-            );
+            Vec::new());
         }
         let ms = match &args[0] {
             Objeto::Entero(n) => *n,
@@ -31,13 +31,13 @@ pub fn crear_modulo() -> Objeto {
             _ => {
                 return Objeto::Error(
                     "Se esperaba un número (milisegundos)".to_string(),
-                );
+                Vec::new());
             }
         };
         if ms < 0 {
             return Objeto::Error(
                 "Los milisegundos no pueden ser negativos".to_string(),
-            );
+            Vec::new());
         }
         thread::sleep(Duration::from_millis(ms as u64));
         Objeto::Nulo
@@ -47,13 +47,13 @@ pub fn crear_modulo() -> Objeto {
         if !args.is_empty() {
             return Objeto::Error(
                 "time.segundos no recibe argumentos".to_string(),
-            );
+            Vec::new());
         }
         match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(d) => Objeto::Entero(d.as_secs() as i64),
             Err(e) => Objeto::Error(format!(
                 "Error al obtener el tiempo: {}", e
-            )),
+            ), Vec::new()),
         }
     }
 
@@ -61,13 +61,13 @@ pub fn crear_modulo() -> Objeto {
         if !args.is_empty() {
             return Objeto::Error(
                 "time.micros no recibe argumentos".to_string(),
-            );
+            Vec::new());
         }
         match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(d) => Objeto::Entero(d.as_micros() as i64),
             Err(e) => Objeto::Error(format!(
                 "Error al obtener el tiempo: {}", e
-            )),
+            ), Vec::new()),
         }
     }
 

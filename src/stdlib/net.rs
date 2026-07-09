@@ -49,14 +49,14 @@ fn net_solicitud(args: Vec<Objeto>) -> Objeto {
     if args.len() < 2 || args.len() > 3 {
         return Objeto::Error(
             "Se esperaban 2 o 3 argumentos (metodo, host:puerto, cuerpo?)".to_string(),
-        );
+        Vec::new());
     }
     let metodo = match &args[0] {
         Objeto::Cadena(m) => m.to_uppercase(),
         _ => {
             return Objeto::Error(
                 "El primer argumento debe ser una cadena (método HTTP)".to_string(),
-            );
+            Vec::new());
         }
     };
     let host_puerto = match &args[1] {
@@ -64,13 +64,13 @@ fn net_solicitud(args: Vec<Objeto>) -> Objeto {
         _ => {
             return Objeto::Error(
                 "El segundo argumento debe ser una cadena (host:puerto)".to_string(),
-            );
+            Vec::new());
         }
     };
     if metodo != "GET" && metodo != "POST" && metodo != "PUT" && metodo != "PATCH" && metodo != "DELETE" {
         return Objeto::Error(format!(
             "Método HTTP no soportado: '{}'. Use GET, POST, PUT, PATCH o DELETE", metodo
-        ));
+        ), Vec::new());
     }
     let cuerpo = if args.len() == 3 {
         match &args[2] {
@@ -78,7 +78,7 @@ fn net_solicitud(args: Vec<Objeto>) -> Objeto {
             _ => {
                 return Objeto::Error(
                     "El tercer argumento debe ser una cadena (cuerpo)".to_string(),
-                );
+                Vec::new());
             }
         }
     } else {
@@ -86,7 +86,7 @@ fn net_solicitud(args: Vec<Objeto>) -> Objeto {
     };
     match enviar_peticion_tcp(&metodo, &host_puerto, cuerpo.as_deref()) {
         Ok(r) => Objeto::Cadena(r),
-        Err(e) => Objeto::Error(e),
+        Err(e) => Objeto::Error(e, Vec::new()),
     }
 }
 

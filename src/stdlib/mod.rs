@@ -16,6 +16,7 @@ pub mod os;
 pub mod str;
 pub mod thread;
 pub mod time;
+pub mod ui;
 
 use crate::evaluator::Entorno;
 
@@ -33,4 +34,5 @@ pub fn inyectar_stdlib(entorno: &mut Entorno) {
     entorno.asignar("buffer".to_string(), buffer::crear_modulo());
     entorno.asignar("thread".to_string(), thread::crear_modulo());
     entorno.asignar("gpu".to_string(), gpu::crear_modulo());
+    entorno.asignar("ui".to_string(), ui::crear_modulo());
 }

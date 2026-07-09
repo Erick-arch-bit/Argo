@@ -54,6 +54,8 @@ argo init             Crea un nuevo proyecto
 argo run              Ejecuta el proyecto actual
 argo test             Ejecuta pruebas (*.test.argo)
 argo install          Instala dependencias desde argo.toml
+argo update           Auto-actualiza Argo a la última versión
+argo --version        Muestra la versión actual
 ```
 
 ```rust

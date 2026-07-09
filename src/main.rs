@@ -536,6 +536,201 @@ fn ejecutar_install() {
 }
 
 // ===========================================================================
+// ejecutar_update — Auto-actualizar el binario de Argo
+// ===========================================================================
+// Detecta la plataforma, descarga el último release desde GitHub,
+// y reemplaza el binario actual.
+fn ejecutar_update() {
+    use std::process::Command;
+
+    let green = "\x1b[32m";
+    let red   = "\x1b[31m";
+    let dim   = "\x1b[2m";
+    let bold  = "\x1b[1m";
+    let reset = "\x1b[0m";
+
+    println!();
+    println!("  {bold}Argo{reset} {dim}— Auto-actualización{reset}");
+    println!();
+
+    // 1. Detectar plataforma
+    let (os, arch, ext) = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux",  "x86_64")  => ("linux",  "amd64", ""),
+        ("linux",  "aarch64") => ("linux",  "arm64", ""),
+        ("macos",  "x86_64")  => ("darwin", "amd64", ""),
+        ("macos",  "aarch64") => ("darwin", "arm64", ""),
+        ("windows", "x86_64") => ("windows", "amd64", ".exe"),
+        _ => {
+            println!("  {red}✖{reset} Plataforma no soportada: {} {}", std::env::consts::OS, std::env::consts::ARCH);
+            println!("    Actualiza manualmente desde: https://github.com/Erick-arch-bit/Argo-Lang/releases");
+            std::process::exit(1);
+        }
+    };
+
+    let binary_name = format!("argo-{}-{}{}", os, arch, ext);
+    let repo = "Erick-arch-bit/Argo-Lang";
+    let url = format!("https://github.com/{}/releases/latest/download/{}", repo, binary_name);
+
+    // 2. Obtener el path del binario actual
+    let current_exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            println!("  {red}✖{reset} No se pudo obtener la ruta del binario: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // 3. Descargar a archivo temporal
+    println!("  {dim}│{reset} Descargando {binary_name}...");
+
+    let tmp_dir = std::env::temp_dir();
+    let tmp_file = tmp_dir.join(format!("argo-update-{}.tmp{}", arch, ext));
+
+    // Intentar curl primero, luego wget
+    let downloaded = Command::new("curl")
+        .args(["-sSL", "-o", tmp_file.to_str().unwrap(), &url])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    let downloaded = if !downloaded {
+        Command::new("wget")
+            .args(["-q", "-O", tmp_file.to_str().unwrap(), &url])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    } else {
+        true
+    };
+
+    if !downloaded {
+        println!("  {red}✖{reset} No se pudo descargar. Verifica tu conexión.");
+        let _ = fs::remove_file(&tmp_file);
+        std::process::exit(1);
+    }
+
+    // 4. Verificar que el archivo no esté vacío (descarga fallida = HTML de error)
+    let meta = match fs::metadata(&tmp_file) {
+        Ok(m) => m,
+        Err(_) => {
+            println!("  {red}✖{reset} Error al leer el archivo descargado.");
+            let _ = fs::remove_file(&tmp_file);
+            std::process::exit(1);
+        }
+    };
+
+    if meta.len() < 1000 {
+        // Archivo muy pequeño — probablemente es un HTML de error 404
+        let content = fs::read_to_string(&tmp_file).unwrap_or_default();
+        if content.contains("Not Found") || content.contains("404") {
+            println!("  {red}✖{reset} Release no encontrado en GitHub.");
+            println!("    URL: {url}");
+            let _ = fs::remove_file(&tmp_file);
+            std::process::exit(1);
+        }
+    }
+
+    // 5. Hacer ejecutable (Unix)
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&tmp_file, fs::Permissions::from_mode(0o755));
+    }
+
+    // 6. Reemplazar el binario actual
+    if cfg!(target_os = "windows") {
+        // Windows: no puede reemplazar un exe en ejecución.
+        // Estrategia: descargar nuevo → renombrar actual → batch script post-exit
+        let new_path = tmp_dir.join(format!("argo-new-{}.exe", arch));
+        let _ = fs::rename(&tmp_file, &new_path);
+
+        let old_path = tmp_dir.join(format!("argo-old-{}.exe", arch));
+        let _ = fs::remove_file(&old_path);
+        let _ = fs::rename(&current_exe, &old_path);
+
+        // Intentar rename, si falla usar copy
+        let moved = fs::rename(&new_path, &current_exe).is_ok();
+        if !moved {
+            if let Err(e) = fs::copy(&new_path, &current_exe) {
+                let _ = fs::rename(&old_path, &current_exe);
+                let _ = fs::remove_file(&new_path);
+                println!("  {red}✖{reset} No se pudo reemplazar el binario: {}", e);
+                println!("    Descarga manualmente desde: https://github.com/{repo}/releases");
+                std::process::exit(1);
+            }
+            let _ = fs::remove_file(&new_path);
+        }
+
+        // Crear script para limpiar el binario antiguo
+        let cleanup = format!(
+            "@echo off\r\n\
+             timeout /t 2 /nobreak >nul\r\n\
+             del \"{}\" 2>nul\r\n\
+             echo Argo actualizado exitosamente.\r\n",
+            old_path.display()
+        );
+        let bat_path = tmp_dir.join("argo-cleanup.bat");
+        let _ = fs::write(&bat_path, cleanup);
+        let _ = Command::new("cmd").args(["/C", bat_path.to_str().unwrap()]).spawn();
+
+    } else {
+        // Unix: renombrar actual, mover nuevo
+        // Linux/macOS: el binario en ejecución no se puede reemplazar
+        // directamente. Usamos un script shell que hace el swap atómicamente.
+        let new_path = tmp_dir.join(format!("argo-new-{}", arch));
+        let old_path = tmp_dir.join(format!("argo-old-{}", arch));
+        let _ = fs::rename(&tmp_file, &new_path);
+
+        // Crear script de swap
+        let exe_str = current_exe.to_str().unwrap_or("argo");
+        let new_str = new_path.to_str().unwrap_or("");
+        let old_str = old_path.to_str().unwrap_or("");
+
+        let script = format!(
+            "#!/bin/sh\n\
+             rm -f \"{old_str}\"\n\
+             mv \"{exe_str}\" \"{old_str}\" 2>/dev/null || true\n\
+             mv \"{new_str}\" \"{exe_str}\"\n\
+             chmod +x \"{exe_str}\"\n\
+             rm -f \"{old_str}\"\n\
+             echo \"Argo actualizado exitosamente.\"\n"
+        );
+        let script_path = tmp_dir.join("argo-swap.sh");
+        let _ = fs::write(&script_path, &script);
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755));
+        }
+
+        // Ejecutar el script de swap y salir
+        println!("  {dim}│{reset} Aplicando actualización...");
+        let _ = Command::new("sh").arg(script_path.to_str().unwrap()).status();
+        std::process::exit(0);
+    }
+
+    // 7. Verificar que funciona
+    let output = Command::new(&current_exe)
+        .args(["--version"])
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let ver = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            println!("  {dim}│{reset} Nuevo binario verificado: {ver}");
+        }
+        _ => {
+            // --version no existe aún, simplemente informar
+        }
+    }
+
+    println!();
+    println!("  {green}✔{reset} {bold}Argo actualizado exitosamente!{reset}");
+    println!();
+}
+
+// ===========================================================================
 // main — Punto de entrada del binario
 // ===========================================================================
 // Enruta los comandos según el primer argumento:
@@ -561,6 +756,9 @@ fn main() {
 
         // Un argumento de usuario
         2 => match args[1].as_str() {
+            "--version" | "-v" => {
+                println!("argo 1.5.1");
+            }
             "init" => {
                 iniciar_animacion();
                 generar_proyecto();
@@ -579,6 +777,9 @@ fn main() {
             "install" => {
                 ejecutar_install();
             }
+            "update" => {
+                ejecutar_update();
+            }
             // Si no es un comando reservado, tratar como ruta de archivo
             _ => {
                 ejecutar_archivo(&args[1]);
@@ -595,6 +796,7 @@ fn main() {
             println!("    {lg}repl{r}    Iniciar el REPL interactivo");
             println!("    {lg}test{r}    Ejecutar pruebas (*.test.argo)");
             println!("    {lg}install{r} Instalar dependencias desde argo.toml");
+            println!("    {lg}update{r}  Auto-actualizar Argo a la última versión");
             println!();
             println!("  {b}{lg}Tambien:{r}");
             println!("    {lg}argo <archivo.argo>{r}  Ejecutar un script directamente");

@@ -11,7 +11,6 @@ use crate::evaluator::Objeto;
 use renderer::TerminalRenderer;
 use widgets::{TipoWidget, UiState, Widget};
 
-// Estado global de la UI, accesible desde cualquier parte del evaluador
 pub struct AppState {
     pub ui: UiState,
     pub renderer: TerminalRenderer,
@@ -28,7 +27,6 @@ fn get_state() -> &'static Mutex<AppState> {
     })
 }
 
-/// Crea el modulo `ui` como un Diccionario de Argo.
 pub fn crear_modulo() -> Objeto {
     let mut funcs = std::collections::HashMap::new();
 
@@ -72,12 +70,13 @@ pub fn crear_modulo() -> Objeto {
             let state = get_state();
             let mut st = state.lock().unwrap();
 
+            // Batch: limpiar + borde + título en un solo flush
             st.renderer.limpiar_pantalla();
             st.renderer.dibujar_borde(0, 0, ancho, alto);
-
             if !nombre.is_empty() {
                 st.renderer.dibujar_texto(2, 0, &nombre, 255, 255, 255);
             }
+            st.renderer.flush();
 
             let id = st.ui.siguiente_id();
             st.ui.agregar_widget(Widget {
@@ -146,6 +145,7 @@ pub fn crear_modulo() -> Objeto {
 
             st.renderer
                 .dibujar_texto(x, y, &texto, 255, 255, 255);
+            st.renderer.flush();
 
             let id = st.ui.siguiente_id();
             st.ui.agregar_widget(Widget {
@@ -223,6 +223,8 @@ pub fn crear_modulo() -> Objeto {
             let mut st = state.lock().unwrap();
 
             let ancho_btn = texto.len() + 4;
+
+            // Batch: fondo + cursor + texto + cursor en un solo flush
             st.renderer.color_fondo(0, 50, 100);
             st.renderer.mover_cursor(x, y);
             print!(" ");
@@ -230,6 +232,7 @@ pub fn crear_modulo() -> Objeto {
             print!(" {} ", texto);
             st.renderer.resetear_colores();
             st.renderer.mover_cursor(x, y);
+            st.renderer.flush();
 
             let id = st.ui.siguiente_id();
             st.ui.agregar_widget(Widget {
@@ -267,12 +270,10 @@ pub fn crear_modulo() -> Objeto {
             };
 
             loop {
-                let tecla = input::leer_tecla();
-
-                match tecla.as_str() {
-                    "q" | "Q" => {
+                match input::leer_tecla() {
+                    "q" => {
                         let state = get_state();
-                        let st = state.lock().unwrap();
+                        let mut st = state.lock().unwrap();
                         st.renderer.resetear_colores();
                         st.renderer.limpiar_pantalla();
                         break;

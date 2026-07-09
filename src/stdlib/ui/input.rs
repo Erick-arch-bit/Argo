@@ -1,44 +1,31 @@
 use std::io::Read;
 
-pub fn leer_tecla() -> String {
+pub fn leer_tecla() -> &'static str {
     let mut stdin = std::io::stdin();
     let mut buffer = [0u8; 1];
 
-    // Leer un byte
     match stdin.read(&mut buffer) {
-        Ok(0) => return "q".to_string(),
+        Ok(0) => return "q",
         Ok(_) => {}
-        Err(_) => return "q".to_string(),
+        Err(_) => return "q",
     }
 
-    let byte = buffer[0];
-
-    match byte {
-        // Enter
-        13 => "Enter".to_string(),
-        // Escape sequence (arrow keys, etc.)
+    match buffer[0] {
+        13 => "Enter",
         27 => {
             let mut seq = [0u8; 2];
             let _ = stdin.read(&mut seq);
             match seq {
-                [91, 65] => "ArrowUp".to_string(),
-                [91, 66] => "ArrowDown".to_string(),
-                [91, 67] => "ArrowRight".to_string(),
-                [91, 68] => "ArrowLeft".to_string(),
-                _ => "Escape".to_string(),
+                [91, 65] => "ArrowUp",
+                [91, 66] => "ArrowDown",
+                [91, 67] => "ArrowRight",
+                [91, 68] => "ArrowLeft",
+                _ => "Escape",
             }
         }
-        // Backspace
-        127 => "Backspace".to_string(),
-        // Tab
-        9 => "Tab".to_string(),
-        // Caracteres normales (q, space, etc.)
-        _ => {
-            if (32..=126).contains(&byte) {
-                (byte as char).to_string()
-            } else {
-                "?".to_string()
-            }
-        }
+        127 => "Backspace",
+        9 => "Tab",
+        b'q' | b'Q' => "q",
+        _ => "q",
     }
 }

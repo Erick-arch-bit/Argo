@@ -749,7 +749,7 @@ fn main() {
     match args.len() {
         // Sin argumentos → REPL interactivo
         1 => {
-            println!("Argo v1.5.2 - Interprete Nativo");
+            println!("Argo v1.5.3 - Interprete Nativo");
             println!("Escribe 'exit' para salir.\n");
             iniciar_repl();
         }
@@ -757,7 +757,7 @@ fn main() {
         // Un argumento de usuario
         2 => match args[1].as_str() {
             "--version" | "-v" => {
-                println!("argo 1.5.2");
+                println!("argo 1.5.3");
             }
             "init" => {
                 iniciar_animacion();
@@ -767,7 +767,7 @@ fn main() {
                 ejecutar_proyecto();
             }
             "repl" => {
-                println!("Argo v1.5.2 - Interprete Nativo");
+                println!("Argo v1.5.3 - Interprete Nativo");
                 println!("Escribe 'exit' para salir.\n");
                 iniciar_repl();
             }

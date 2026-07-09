@@ -1,9 +1,9 @@
-# Argo v1.5.2
+# Argo v1.5.3
 
 Argo es un lenguaje de programación interpretado, minimalista y extensible, escrito en Rust **sin dependencias externas**.
 
 ```bash
-curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.2/install.sh | bash
+curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.3/install.sh | bash
 ```
 
 ## Características
@@ -26,6 +26,7 @@ curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.2/i
 | **Concurrencia** | `thread.spawn("código")`, canales `canal.nuevo()` |
 | **GPU** | Framebuffer por software: `gpu.crear_buffer`, `.pixel`, `.linea`, `.rect`, `.circulo`, `.guardar`, `.mostrar` |
 | **TUI** | Terminal UI nativo: `ui.ventana`, `ui.texto`, `ui.boton`, `ui.ejecutar` — ANSI escape codes |
+| **IX** | Window manager: `ix.crear_ventana`, `ix.mover_ventana`, `ix.ejecutar` — ventanas flotantes con z-ordering |
 | **Caché** | AST serializado a `.argbc` — segunda ejecución instantánea |
 | **Package manager** | `argo install` — lee `[dependencies]` de `argo.toml` |
 
@@ -44,7 +45,9 @@ curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.2/i
 | `json` | `parsear`, `stringificar` |
 | `thread` | `spawn` |
 | `gpu` | `crear_buffer`, `pixel`, `linea`, `rect`, `circulo`, `guardar`, `mostrar`, `limpiar` |
-| `ui` | `ventana`, `texto`, `boton`, `ejecutar` |
+| `ui` | `tema`, `columna`, `fila`, `texto`, `boton`, `input`, `separador`, `ejecutar`, `limpiar`, `reset` |
+| `ix` | `crear_ventana`, `mover_ventana`, `cambiar_foco`, `cerrar_ventana`, `ejecutar`, `listar_ventanas`, `info_ventana` |
+| `render` | Motor interno: `RenderEngine`, dirty-rect diffing, `AnsiBuf` zero-alloc |
 | Built-in | `print`, `len`, `push`, `tipo`, `assert`, `typeof` |
 
 ## Uso
@@ -61,7 +64,7 @@ argo --version        Muestra la versión actual
 ```
 
 ```rust
-print("Hola desde Argo v1.5.2");
+print("Hola desde Argo v1.5.3");
 
 // Structs y Enums
 struct Rect { x, y }
@@ -104,10 +107,16 @@ try {
 assert(1 + 1 == 2, "matematicas basicas");
 
 // Terminal UI nativo
-let app = ui.ventana("Mi App", 40, 15);
-ui.texto(app, "Bienvenido a Argo TUI!", 2, 2);
-let btn = ui.boton(app, " Click me ", 2, 7, 1);
-let resultado = ui.ejecutar(app);
+ui.tema({ bg: "#2b2b2b", fg: "#ffffff", primary: "#3b82f6" });
+let root = ui.columna(0, 1);
+ui.texto(root, "Bienvenido a Argo TUI!");
+let btn = ui.boton(root, " Click me ", 1);
+let accion = ui.ejecutar();
+
+// Window Manager (ix)
+let w1 = ix.crear_ventana("Mi Ventana", 30, 10);
+let w2 = ix.crear_ventana("Otra", 20, 8, { x: 50, y: 20 });
+ix.ejecutar();
 ```
 
 ## Instalación

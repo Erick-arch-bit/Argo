@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.5.3 — 2026-07-09
+
+### Nuevo: Documentación completa
+- Carpeta `docs/` con documentación de cada módulo de la stdlib
+- `docs/arr.md` — Operaciones con arreglos
+- `docs/buffer.md` — Buffers binarios
+- `docs/fs.md` — Sistema de archivos
+- `docs/gpu.md` — Framebuffer por software
+- `docs/json.md` — JSON
+- `docs/math.md` — Matemáticas
+- `docs/net.md` — Red
+- `docs/os.md` — Sistema operativo
+- `docs/str.md` — Cadenas de texto
+- `docs/thread.md` — Concurrencia
+- `docs/time.md` — Tiempo
+- `docs/ui.md` — Interfaz de terminal (TUI)
+- `docs/ix.md` — Window manager
+- `docs/render.md` — Motor de renderizado interno
+
+### Actualizado
+- README.md con documentación de ix y render
+- Versión bump a 1.5.3 en todos los archivos
+
+---
+
 ## v1.5.2 — 2026-07-09
 
 ### Nuevo: Render engine profesional

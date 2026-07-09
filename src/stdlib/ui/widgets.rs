@@ -1,24 +1,41 @@
 // ---------------------------------------------------------------------------
-// Widgets — Sistema de árbol de widgets para TUI
+// Theme — Colores globales de la UI
 // ---------------------------------------------------------------------------
-
-/// Tipo de layout de un nodo.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TipoLayout {
-    /// Fila: hijos lado a lado (horizontal).
-    Fila,
-    /// Columna: hijos apilados (vertical).
-    Columna,
-    /// Area: contenedor con tamaño fijo, hijo único.
-    Area,
+pub struct Theme {
+    pub bg: (u8, u8, u8),
+    pub fg: (u8, u8, u8),
+    pub primary: (u8, u8, u8),
+    pub secondary: (u8, u8, u8),
+    pub accent: (u8, u8, u8),
+    pub border: (u8, u8, u8),
+    pub text_bg: (u8, u8, u8),
+    pub error: (u8, u8, u8),
 }
 
-/// Datos de un widget que se dibuja en pantalla.
+impl Default for Theme {
+    fn default() -> Self {
+        Theme {
+            bg: (43, 43, 43),         // #2b2b2b
+            fg: (255, 255, 255),      // #ffffff
+            primary: (59, 130, 246),   // #3b82f6
+            secondary: (107, 114, 128), // #6b7280
+            accent: (16, 185, 129),    // #10b981
+            border: (75, 85, 99),      // #4b5563
+            text_bg: (31, 41, 55),     // #1f2937
+            error: (239, 68, 68),      // #ef4444
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DatosWidget — Qué dibujar
+// ---------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub enum DatosWidget {
     Texto {
         valor: String,
-        color: (u8, u8, u8),
+        color: Option<(u8, u8, u8)>,
+        grande: bool,
     },
     Boton {
         texto: String,
@@ -27,9 +44,19 @@ pub enum DatosWidget {
     Input {
         placeholder: String,
     },
+    Separador,
 }
 
-/// Nodo en el árbol de UI.
+// ---------------------------------------------------------------------------
+// NodoUI — Nodo en el árbol de widgets
+// ---------------------------------------------------------------------------
+#[derive(Debug, Clone)]
+pub enum TipoLayout {
+    Fila,
+    Columna,
+    Area,
+}
+
 #[derive(Debug, Clone)]
 pub struct NodoUI {
     pub id: usize,
@@ -37,7 +64,6 @@ pub struct NodoUI {
     pub hijos: Vec<NodoUI>,
     pub ancho: usize,
     pub alto: usize,
-    pub margen: usize,
     pub gap: usize,
     pub widget: Option<DatosWidget>,
 }
@@ -50,23 +76,19 @@ impl NodoUI {
             hijos: Vec::new(),
             ancho: 0,
             alto: 0,
-            margen: 0,
             gap: 0,
             widget: None,
         }
     }
-
-    pub fn agregar_hijo(&mut self, hijo: NodoUI) {
-        self.hijos.push(hijo);
-    }
 }
 
 // ---------------------------------------------------------------------------
-// UiState — Estado global del sistema de UI
+// UiState — Estado global de la UI
 // ---------------------------------------------------------------------------
 pub struct UiState {
     pub raiz: Option<NodoUI>,
     pub contador_ids: usize,
+    pub theme: Theme,
     pub foco_id: Option<usize>,
     pub widgets_focusable: Vec<usize>,
 }
@@ -82,6 +104,7 @@ impl UiState {
         UiState {
             raiz: None,
             contador_ids: 0,
+            theme: Theme::default(),
             foco_id: None,
             widgets_focusable: Vec::new(),
         }
@@ -92,11 +115,7 @@ impl UiState {
         self.contador_ids
     }
 
-    /// Busca un nodo por ID en el árbol (recursivo).
-    pub fn buscar_nodo_mut(
-        nodo: &mut NodoUI,
-        id: usize,
-    ) -> Option<&mut NodoUI> {
+    pub fn buscar_nodo_mut(nodo: &mut NodoUI, id: usize) -> Option<&mut NodoUI> {
         if nodo.id == id {
             return Some(nodo);
         }
@@ -108,7 +127,6 @@ impl UiState {
         None
     }
 
-    /// Recoge todos los IDs focusable (botones, inputs) en orden.
     pub fn recoger_focusables(&mut self) {
         self.widgets_focusable.clear();
         if let Some(ref raiz) = self.raiz {
@@ -125,13 +143,11 @@ impl UiState {
         }
     }
 
-    /// Avanza el foco al siguiente widget.
     pub fn siguiente_foco(&mut self) {
         if self.widgets_focusable.is_empty() {
             return;
         }
-        let actual = self.foco_id;
-        let idx = match actual {
+        let idx = match self.foco_id {
             Some(id) => self
                 .widgets_focusable
                 .iter()
@@ -143,31 +159,22 @@ impl UiState {
         self.foco_id = Some(self.widgets_focusable[idx]);
     }
 
-    /// Retrocede el foco al widget anterior.
     pub fn anterior_foco(&mut self) {
         if self.widgets_focusable.is_empty() {
             return;
         }
-        let actual = self.foco_id;
-        let idx = match actual {
+        let idx = match self.foco_id {
             Some(id) => self
                 .widgets_focusable
                 .iter()
                 .position(|&wid| wid == id)
-                .map(|i| {
-                    if i == 0 {
-                        self.widgets_focusable.len() - 1
-                    } else {
-                        i - 1
-                    }
-                })
+                .map(|i| if i == 0 { self.widgets_focusable.len() - 1 } else { i - 1 })
                 .unwrap_or(0),
             None => 0,
         };
         self.foco_id = Some(self.widgets_focusable[idx]);
     }
 
-    /// Retorna el callback_id del widget con foco (si es botón).
     pub fn callback_foco(&self) -> Option<usize> {
         let foco = self.foco_id?;
         if let Some(ref raiz) = self.raiz {

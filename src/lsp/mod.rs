@@ -306,7 +306,7 @@ impl Lsp {
                 contenido.insert(
                     "value".to_string(),
                     ValorJson::Cadena(
-                        "Argo v1.5.1 — Lenguaje de programación".to_string(),
+                        "Argo v1.5.2 — Lenguaje de programación".to_string(),
                     ),
                 );
                 let mut resultado = HashMap::new();

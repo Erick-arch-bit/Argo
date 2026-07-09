@@ -1,9 +1,9 @@
-# Argo v1.5.1
+# Argo v1.5.2
 
 Argo es un lenguaje de programación interpretado, minimalista y extensible, escrito en Rust **sin dependencias externas**.
 
 ```bash
-curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.1/install.sh | bash
+curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.2/install.sh | bash
 ```
 
 ## Características
@@ -25,6 +25,7 @@ curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.1/i
 | **Iteradores** | `arr.map(fn)`, `.filter()`, `.reduce()`, `.find()`, `.every()`, `.some()` |
 | **Concurrencia** | `thread.spawn("código")`, canales `canal.nuevo()` |
 | **GPU** | Framebuffer por software: `gpu.crear_buffer`, `.pixel`, `.linea`, `.rect`, `.circulo`, `.guardar`, `.mostrar` |
+| **TUI** | Terminal UI nativo: `ui.ventana`, `ui.texto`, `ui.boton`, `ui.ejecutar` — ANSI escape codes |
 | **Caché** | AST serializado a `.argbc` — segunda ejecución instantánea |
 | **Package manager** | `argo install` — lee `[dependencies]` de `argo.toml` |
 
@@ -43,6 +44,7 @@ curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.1/i
 | `json` | `parsear`, `stringificar` |
 | `thread` | `spawn` |
 | `gpu` | `crear_buffer`, `pixel`, `linea`, `rect`, `circulo`, `guardar`, `mostrar`, `limpiar` |
+| `ui` | `ventana`, `texto`, `boton`, `ejecutar` |
 | Built-in | `print`, `len`, `push`, `tipo`, `assert`, `typeof` |
 
 ## Uso
@@ -59,7 +61,7 @@ argo --version        Muestra la versión actual
 ```
 
 ```rust
-print("Hola desde Argo v1.5.1");
+print("Hola desde Argo v1.5.2");
 
 // Structs y Enums
 struct Rect { x, y }
@@ -100,6 +102,12 @@ try {
 
 // Testing
 assert(1 + 1 == 2, "matematicas basicas");
+
+// Terminal UI nativo
+let app = ui.ventana("Mi App", 40, 15);
+ui.texto(app, "Bienvenido a Argo TUI!", 2, 2);
+let btn = ui.boton(app, " Click me ", 2, 7, 1);
+let resultado = ui.ejecutar(app);
 ```
 
 ## Instalación

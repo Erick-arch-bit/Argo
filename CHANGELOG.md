@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.5.2 — 2026-07-09
+
+### Nuevo: Módulo TUI nativo
+- `ui.ventana(nombre, ancho, alto)` — crea ventana con borde Unicode
+- `ui.texto(app_id, texto, x, y)` — dibuja texto en posición
+- `ui.boton(app_id, texto, x, y, callback_id)` — botón con fondo ANSI
+- `ui.ejecutar(app_id)` — loop de input hasta presionar 'q'
+- Renderer con `BufWriter` — flush mínimo, raw bytes UTF-8
+- Input retorna `&'static str` — zero-allocation por tecla
+
+### Optimizaciones de rendimiento
+- **Renderer**: `BufWriter<Stdout>` reduce syscalls de ~6 por operación a 1
+- **Renderer**: `dibujar_borde` usa raw bytes UTF-8 en buffer
+- **Input**: retorna `&'static str` en lugar de `String` (zero-alloc)
+- **Mod**: batch flush dentro del lock del Mutex
+
+---
+
 ## v1.3.0 — 2026-06-24
 
 ### Nuevo: Módulo GPU

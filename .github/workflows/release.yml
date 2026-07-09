@@ -86,7 +86,7 @@ jobs:
           $hash = (Get-FileHash -Algorithm SHA256 ${{ matrix.binary_name }}).Hash.ToLower()
           "$hash  ${{ matrix.binary_name }}" | Out-File -Encoding ASCII ${{ matrix.binary_name }}.sha256
 
-      - name: Upload release assets
+      - name: Create release and upload binary
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -96,6 +96,21 @@ jobs:
           gh release upload "${{ github.ref_name }}" \
             "${{ matrix.binary_name }}" \
             "${{ matrix.binary_name }}.sha256" \
+            --clobber
+
+  publish:
+    name: Publish install scripts
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Upload install scripts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
             install.sh \
             install.ps1 \
             --clobber

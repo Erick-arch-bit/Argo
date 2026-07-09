@@ -260,6 +260,8 @@ impl<'a> Parser<'a> {
             Token::Continue => self.parsear_sentencia_continue(),
             Token::Fn => self.parsear_declaracion_funcion(),
             Token::Struct => self.parsear_declaracion_struct(),
+            Token::Enum => self.parsear_declaracion_enum(),
+            Token::Extern => self.parsear_declaracion_extern(),
             // Expresiones como sentencias (ej. llamadas a función foo())
             Token::Identificador(_)
             | Token::Entero(_)
@@ -1259,7 +1261,47 @@ impl<'a> Parser<'a> {
                     Token::Identificador(n) => n,
                     _ => return None,
                 };
-                if self.token_actual == Token::LlaveAbierta {
+                if self.token_actual == Token::ParentesisAbierto {
+                    // Variante(Campo1, Campo2) — patrón de enum
+                    self.avanzar();
+                    let mut bindings = Vec::new();
+                    if self.token_actual != Token::ParentesisCerrado {
+                        while let Token::Identificador(b) = self.avanzar() {
+                            bindings.push(b);
+                            if self.token_actual == Token::Coma {
+                                self.avanzar();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    if self.token_actual == Token::ParentesisCerrado {
+                        self.avanzar();
+                    }
+                    Some(Patron::EnumPatron { nombre, bindings })
+                } else if self.token_actual == Token::DobleDosPuntos {
+                    self.avanzar();
+                    let variante = match self.avanzar() {
+                        Token::Identificador(v) => v,
+                        _ => return None,
+                    };
+                    let mut bindings = Vec::new();
+                    if self.token_actual == Token::ParentesisAbierto {
+                        self.avanzar();
+                        while let Token::Identificador(b) = self.avanzar() {
+                            bindings.push(b);
+                            if self.token_actual == Token::Coma {
+                                self.avanzar();
+                            } else {
+                                break;
+                            }
+                        }
+                        if self.token_actual == Token::ParentesisCerrado {
+                            self.avanzar();
+                        }
+                    }
+                    Some(Patron::EnumPatron { nombre: variante, bindings })
+                } else if self.token_actual == Token::LlaveAbierta {
                     self.parsear_patron_struct(nombre)
                 } else {
                     Some(Patron::Binding(nombre))
@@ -1373,6 +1415,8 @@ impl<'a> Parser<'a> {
         };
         if self.token_actual == Token::LlaveAbierta {
             self.parsear_instancia_struct(nombre)
+        } else if self.token_actual == Token::DobleDosPuntos {
+            self.parsear_instancia_enum(nombre)
         } else {
             Some(Expression::Identificador(nombre))
         }
@@ -1422,6 +1466,159 @@ impl<'a> Parser<'a> {
         }
         self.avanzar();
         Some(Expression::StructInstancia { nombre, valores })
+    }
+
+    /// Parsea `Nombre::Variante(args...)` → Expression::EnumInstancia
+    fn parsear_instancia_enum(&mut self, enum_nombre: String) -> Option<Expression> {
+        self.avanzar(); // consumir ::
+        let variante = match self.avanzar() {
+            Token::Identificador(v) => v,
+            _ => {
+                self.errores.push(self.error_ubicacion(
+                    "Error de sintaxis: se esperaba el nombre de la variante después de '::'"
+                        .to_string(),
+                ));
+                return None;
+            }
+        };
+        let argumentos = if self.token_actual == Token::ParentesisAbierto {
+            self.avanzar();
+            let mut args = Vec::new();
+            if self.token_actual != Token::ParentesisCerrado {
+                loop {
+                    let expr = self.parsear_expresion(Precedencia::Menor)?;
+                    args.push(expr);
+                    if self.token_actual == Token::Coma {
+                        self.avanzar();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            if self.token_actual != Token::ParentesisCerrado {
+                self.errores.push(self.error_ubicacion(
+                    "Error de sintaxis: se esperaba ')' después de los argumentos".to_string(),
+                ));
+                return None;
+            }
+            self.avanzar();
+            args
+        } else {
+            Vec::new()
+        };
+        Some(Expression::EnumInstancia { enum_nombre, variante, argumentos })
+    }
+
+    /// Parsea `enum Nombre { Variante1, Variente2(campo: Tipo) }`
+    fn parsear_declaracion_enum(&mut self) -> Option<Statement> {
+        self.avanzar();
+        let nombre = match self.avanzar() {
+            Token::Identificador(n) => n,
+            _ => {
+                self.errores.push(self.error_ubicacion(
+                    "Error de sintaxis: se esperaba el nombre del enum".to_string(),
+                ));
+                return None;
+            }
+        };
+        if self.token_actual != Token::LlaveAbierta {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba '{' después del nombre del enum".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+        let mut variantes = Vec::new();
+        if self.token_actual != Token::LlaveCerrada {
+            while let Token::Identificador(v_nombre) = self.avanzar() {
+                let mut campos = Vec::new();
+                if self.token_actual == Token::ParentesisAbierto {
+                    self.avanzar();
+                    while let Token::Identificador(c) = self.avanzar() {
+                        let tipo = if self.token_actual == Token::DosPuntos {
+                            self.avanzar();
+                            match self.avanzar() {
+                                Token::Identificador(t) => t,
+                                _ => String::new(),
+                            }
+                        } else {
+                            String::new()
+                        };
+                        campos.push((c, tipo));
+                        if self.token_actual == Token::Coma {
+                            self.avanzar();
+                        } else {
+                            break;
+                        }
+                    }
+                    if self.token_actual == Token::ParentesisCerrado {
+                        self.avanzar();
+                    }
+                }
+                variantes.push(crate::ast::VarianteEnum { nombre: v_nombre, campos });
+                if self.token_actual == Token::Coma {
+                    self.avanzar();
+                } else {
+                    break;
+                }
+            }
+        }
+        if self.token_actual != Token::LlaveCerrada {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba '}' para cerrar el enum".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+        Some(Statement::EnumDefinicion { nombre, variantes })
+    }
+
+    /// Parsea `extern fn nombre(args...);`
+    fn parsear_declaracion_extern(&mut self) -> Option<Statement> {
+        self.avanzar(); // consumir `extern`
+        if self.token_actual != Token::Fn {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba 'fn' después de 'extern'".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+        let nombre = match self.avanzar() {
+            Token::Identificador(n) => n,
+            _ => {
+                self.errores.push(self.error_ubicacion(
+                    "Error de sintaxis: se esperaba el nombre de la función externa".to_string(),
+                ));
+                return None;
+            }
+        };
+        if self.token_actual != Token::ParentesisAbierto {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba '(' después del nombre".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+        if self.token_actual != Token::ParentesisCerrado {
+            while let Token::Identificador(_) = self.avanzar() {
+                if self.token_actual == Token::Coma {
+                    self.avanzar();
+                } else {
+                    break;
+                }
+            }
+        }
+        if self.token_actual != Token::ParentesisCerrado {
+            self.errores.push(self.error_ubicacion(
+                "Error de sintaxis: se esperaba ')' después de los parámetros".to_string(),
+            ));
+            return None;
+        }
+        self.avanzar();
+        if self.token_actual == Token::PuntoComa {
+            self.avanzar();
+        }
+        Some(Statement::ExternFn { nombre })
     }
 
     /// Parsea un entero: `Token::Entero(v)` → Expression::Entero(v)
@@ -1934,18 +2131,13 @@ impl<'a> Parser<'a> {
         // Ya consumimos `import`, token_actual es `{`
         self.avanzar(); // consumir `{`
         let mut nombres = Vec::new();
-        loop {
-            match &self.token_actual {
-                Token::Identificador(n) => {
-                    nombres.push(n.clone());
-                    self.avanzar();
-                    if self.token_actual == Token::Coma {
-                        self.avanzar();
-                    } else {
-                        break;
-                    }
-                }
-                _ => break,
+        while let Token::Identificador(n) = &self.token_actual {
+            nombres.push(n.clone());
+            self.avanzar();
+            if self.token_actual == Token::Coma {
+                self.avanzar();
+            } else {
+                break;
             }
         }
         if self.token_actual != Token::LlaveCerrada {

@@ -51,6 +51,12 @@ use crate::lexer::token::Token;
 // fresca de las nativas, garantizando aislamiento.
 //
 // Retorna: Entorno — el entorno global listo para usar.
+fn ffi_externa(args: Vec<Objeto>) -> Objeto {
+    eprintln!("[FFI CALL] extern({})  -> 1",
+        args.iter().map(|a| format!("{}", a)).collect::<Vec<_>>().join(", "));
+    Objeto::Entero(1)
+}
+
 pub fn configurar_entorno_global() -> Entorno {
     let mut entorno = Entorno::nuevo();
 
@@ -154,6 +160,8 @@ pub fn configurar_entorno_global() -> Entorno {
             Objeto::Buffer(_) => "buffer",
             Objeto::Canal(_) => "canal",
             Objeto::StructDef(_) => "struct_def",
+            Objeto::EnumDef(_) => "enum_def",
+            Objeto::EnumValor { .. } => "enum_valor",
             Objeto::Instancia { .. } => "instancia",
             Objeto::Break => "break",
             Objeto::Continue => "continue",
@@ -170,7 +178,7 @@ pub fn configurar_entorno_global() -> Entorno {
     entorno.asignar("cadena".to_string(), Objeto::Nativa(cast_cadena));
 
     let assert_nativa = |args: Vec<Objeto>| -> Objeto {
-        if args.len() < 1 || args.len() > 2 {
+        if args.is_empty() || args.len() > 2 {
             return Objeto::Error(
                 "assert: se esperaban 1-2 argumentos (condición, mensaje?, Vec::new())".to_string(),
             Vec::new());
@@ -614,6 +622,23 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
             entorno.asignar(nombre.clone(), Objeto::StructDef(campos.clone()));
             Objeto::Nulo
         }
+
+        Statement::EnumDefinicion { nombre, variantes } => {
+            let datos: Vec<(String, Vec<String>)> = variantes
+                .iter()
+                .map(|v| {
+                    let nombres_campos: Vec<String> = v.campos.iter().map(|(n, _)| n.clone()).collect();
+                    (v.nombre.clone(), nombres_campos)
+                })
+                .collect();
+            entorno.asignar(nombre.clone(), Objeto::EnumDef(datos));
+            Objeto::Nulo
+        }
+
+        Statement::ExternFn { nombre } => {
+            entorno.asignar(nombre.clone(), Objeto::Nativa(ffi_externa));
+            Objeto::Nulo
+        }
     }
 }
 
@@ -1038,6 +1063,8 @@ fn es_truthy(objeto: &Objeto) -> bool {
         Objeto::Nativa(_) => true,
 
         Objeto::Canal(_) => true,
+        Objeto::EnumDef(_) => true,
+        Objeto::EnumValor { .. } => true,
         Objeto::StructDef(_) | Objeto::Instancia { .. } => true,
     }
 }
@@ -1328,6 +1355,28 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
         },
 
         // ===================================================================
+        // (EnumValor, EnumValor) — Comparación de igualdad
+        // ===================================================================
+        (
+            Objeto::EnumValor { variante: va, campos: ca },
+            Objeto::EnumValor { variante: vb, campos: cb },
+        ) => match operador {
+            "==" => Objeto::Booleano(
+                va == vb
+                    && ca.len() == cb.len()
+                    && ca.iter().zip(cb.iter()).all(|(x, y)| x.son_iguales(y)),
+            ),
+            "!=" => Objeto::Booleano(
+                va != vb
+                    || ca.len() != cb.len()
+                    || !ca.iter().zip(cb.iter()).all(|(x, y)| x.son_iguales(y)),
+            ),
+            _ => Objeto::Error(format!(
+                "Operación '{}' no soportada entre valores de enum", operador
+            ), Vec::new()),
+        },
+
+        // ===================================================================
         // Igualdad Universal — Tipos diferentes
         // ===================================================================
         // Cuando los tipos no coinciden (Entero vs Cadena, Flotante
@@ -1381,6 +1430,11 @@ fn evaluar_patron(patron: &Patron, valor: &Objeto, entorno: &mut Entorno) -> boo
     match patron {
         Patron::Wildcard => true,
         Patron::Binding(nombre) => {
+            // Si el valor es un EnumValor, solo matchea si el nombre
+            // coincide con la variante (ej. `Rojo` vs `Color::Rojo`).
+            if let Objeto::EnumValor { variante, .. } = valor {
+                return nombre == variante;
+            }
             entorno.asignar(nombre.clone(), valor.clone());
             true
         }
@@ -1416,6 +1470,18 @@ fn evaluar_patron(patron: &Patron, valor: &Objeto, entorno: &mut Entorno) -> boo
                     if !evaluar_patron(subpatron, &arr[i], entorno) {
                         return false;
                     }
+                }
+                true
+            } else {
+                false
+            }
+        }
+        Patron::EnumPatron { nombre, bindings } => {
+            if let Objeto::EnumValor { variante, campos } = valor {
+                if *nombre != *variante { return false; }
+                if bindings.len() != campos.len() { return false; }
+                for (i, b) in bindings.iter().enumerate() {
+                    entorno.asignar(b.clone(), campos[i].clone());
                 }
                 true
             } else {
@@ -1909,6 +1975,21 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             }
         }
 
+        // Expression::EnumInstancia { enum_nombre, variante, argumentos } —
+        // Instanciación de variante enum: `Nombre::Variante(args...)`
+        Expression::EnumInstancia { enum_nombre: _, variante, argumentos } => {
+            let mut campos = Vec::new();
+            for expr in argumentos {
+                let valor = evaluar_expresion(expr, entorno);
+                if valor.es_error() { return valor }
+                campos.push(valor);
+            }
+            Objeto::EnumValor {
+                variante: variante.clone(),
+                campos,
+            }
+        }
+
         // Expression::Throw(expr) — Lanzar una excepción.
         // Evalúa la expresión y envuelve el resultado en Objeto::Excepcion.
         Expression::Throw(expr) => {
@@ -1997,7 +2078,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             // Extraer solo las variables solicitadas
             let mut mapa_resultado = HashMap::new();
             for nombre in nombres {
-                match entorno_modulo.obtener(&nombre) {
+                match entorno_modulo.obtener(nombre) {
                     Some(valor) => {
                         mapa_resultado.insert(
                             LlaveHash::Cadena(nombre.clone()), valor,

@@ -3,6 +3,7 @@ use std::process::Command;
 
 use crate::evaluator::{LlaveHash, Objeto};
 
+#[allow(clippy::result_large_err)]
 fn extraer_entero(args: &[Objeto], idx: usize, nombre: &str) -> Result<i64, Objeto> {
     match args.get(idx) {
         Some(Objeto::Entero(v)) => Ok(*v),
@@ -26,6 +27,8 @@ fn extraer_entero(args: &[Objeto], idx: usize, nombre: &str) -> Result<i64, Obje
                 Objeto::Continue => "continue",
                 Objeto::Error(_, _) => "error",
                 Objeto::Canal(_) => "canal",
+                Objeto::EnumDef(_) => "enum_def",
+                Objeto::EnumValor { .. } => "enum_valor",
                 Objeto::Excepcion(_) => "excepcion",
             }
         ), Vec::new())),
@@ -35,6 +38,7 @@ fn extraer_entero(args: &[Objeto], idx: usize, nombre: &str) -> Result<i64, Obje
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn extraer_framebuffer(args: &[Objeto]) -> Result<(Vec<u8>, usize, usize), Objeto> {
     let fb = match args.first() {
         Some(Objeto::Diccionario(d)) => d,
@@ -50,6 +54,8 @@ fn extraer_framebuffer(args: &[Objeto]) -> Result<(Vec<u8>, usize, usize), Objet
                 Objeto::Instancia { .. } => "instancia", Objeto::Break => "break",
                 Objeto::Continue => "continue", Objeto::Error(_, _) => "error",
                 Objeto::Canal(_) => "canal",
+                Objeto::EnumDef(_) => "enum_def",
+                Objeto::EnumValor { .. } => "enum_valor",
                 Objeto::Excepcion(_) => "excepcion",
             }
         ), Vec::new())),
@@ -70,6 +76,8 @@ fn extraer_framebuffer(args: &[Objeto]) -> Result<(Vec<u8>, usize, usize), Objet
                 Objeto::Instancia { .. } => "instancia", Objeto::Break => "break",
                 Objeto::Continue => "continue", Objeto::Error(_, _) => "error",
                 Objeto::Canal(_) => "canal",
+                Objeto::EnumDef(_) => "enum_def",
+                Objeto::EnumValor { .. } => "enum_valor",
                 Objeto::Excepcion(_) => "excepcion",
             }
         ), Vec::new())),
@@ -314,6 +322,8 @@ pub fn crear_modulo() -> Objeto {
                     Objeto::Instancia { .. } => "instancia", Objeto::Break => "break",
                     Objeto::Continue => "continue", Objeto::Error(_, _) => "error",
                     Objeto::Canal(_) => "canal",
+                    Objeto::EnumDef(_) => "enum_def",
+                    Objeto::EnumValor { .. } => "enum_valor",
                     Objeto::Excepcion(_) => "excepcion",
                 }
             ), Vec::new()),

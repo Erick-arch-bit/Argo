@@ -29,6 +29,8 @@ fn tipo_objeto(o: &Objeto) -> &'static str {
         Objeto::Continue => "continue",
         Objeto::Error(_, _) => "error",
         Objeto::Canal(_) => "canal",
+        Objeto::EnumDef(_) => "enum_def",
+        Objeto::EnumValor { .. } => "enum_valor",
         Objeto::Excepcion(_) => "excepcion",
     }
 }

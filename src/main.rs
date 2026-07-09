@@ -497,7 +497,7 @@ fn ejecutar_install() {
     // Generar/actualizar argo.mod (import map)
     {
         let mut lineas = String::new();
-        for (alias, _url) in &dependencias {
+        for alias in dependencias.keys() {
             lineas.push_str(&format!("{} = {}.argo\n", alias, alias));
         }
         if let Err(e) = fs::write("argo.mod", &lineas) {
@@ -554,7 +554,7 @@ fn main() {
     match args.len() {
         // Sin argumentos → REPL interactivo
         1 => {
-            println!("Argo v1.0.0 - Interprete Nativo");
+            println!("Argo v1.5.1 - Interprete Nativo");
             println!("Escribe 'exit' para salir.\n");
             iniciar_repl();
         }
@@ -569,7 +569,7 @@ fn main() {
                 ejecutar_proyecto();
             }
             "repl" => {
-                println!("Argo v1.0.0 - Interprete Nativo");
+                println!("Argo v1.5.1 - Interprete Nativo");
                 println!("Escribe 'exit' para salir.\n");
                 iniciar_repl();
             }

@@ -22,6 +22,8 @@ pub enum Token {
     Struct,
     Match,
     Throw,
+    Enum,
+    Extern,
     Async,
     Await,
 
@@ -71,6 +73,7 @@ pub enum Token {
     Coma,                // ,
     PuntoComa,           // ;
     DosPuntos,           // :
+    DobleDosPuntos,      // ::
     LlaveAbierta,        // {
     LlaveCerrada,        // }
     CorcheteAbierto,     // [

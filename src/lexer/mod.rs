@@ -186,6 +186,8 @@ impl<'a> Lexer<'a> {
             "struct" => Token::Struct,
             "match" => Token::Match,
             "throw" => Token::Throw,
+            "enum" => Token::Enum,
+            "extern" => Token::Extern,
             "async" => Token::Async,
             "await" => Token::Await,
             "true" => Token::True,
@@ -331,7 +333,14 @@ impl<'a> Iterator for Lexer<'a> {
             ',' => Token::Coma,
             ';' => Token::PuntoComa,
             '.' => Token::Punto,
-            ':' => Token::DosPuntos,
+            ':' => {
+                if self.mirar_siguiente() == Some(&':') {
+                    self.avanzar();
+                    Token::DobleDosPuntos
+                } else {
+                    Token::DosPuntos
+                }
+            },
 
             // Si el carácter no coincide con nada, no hacemos crash, emitimos error léxico
             _ => Token::Ilegal(c),

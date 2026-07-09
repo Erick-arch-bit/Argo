@@ -15,14 +15,14 @@ enum ValorJson {
     Objeto(HashMap<String, ValorJson>),
 }
 
-struct LSP {
+struct Lsp {
     salida: Arc<Mutex<io::Stdout>>,
     documentos: HashMap<String, String>,
 }
 
-impl LSP {
+impl Lsp {
     fn nuevo() -> Self {
-        LSP {
+        Lsp {
             salida: Arc::new(Mutex::new(io::stdout())),
             documentos: HashMap::new(),
         }
@@ -260,35 +260,30 @@ impl LSP {
                     crear_item("false", "Literal", "false"),
                     crear_item("null", "Literal", "null"),
                 ];
-                if let Some(ValorJson::Objeto(contexto)) =
-                    params.get("context")
+                if let Some(ValorJson::Objeto(contexto)) = params.get("context")
+                    && let Some(ValorJson::Cadena(trigger)) = contexto.get("triggerCharacter")
+                    && trigger == "."
                 {
-                    if let Some(ValorJson::Cadena(trigger)) =
-                        contexto.get("triggerCharacter")
-                    {
-                        if trigger == "." {
-                            items.push(crear_item(
-                                "map",
-                                "Método de arreglo",
-                                "map(",
-                            ));
-                            items.push(crear_item(
-                                "filter",
-                                "Método de arreglo",
-                                "filter(",
-                            ));
-                            items.push(crear_item(
-                                "reduce",
-                                "Método de arreglo",
-                                "reduce(",
-                            ));
-                            items.push(crear_item(
-                                "find",
-                                "Método de arreglo",
-                                "find(",
-                            ));
-                        }
-                    }
+                    items.push(crear_item(
+                        "map",
+                        "Método de arreglo",
+                        "map(",
+                    ));
+                    items.push(crear_item(
+                        "filter",
+                        "Método de arreglo",
+                        "filter(",
+                    ));
+                    items.push(crear_item(
+                        "reduce",
+                        "Método de arreglo",
+                        "reduce(",
+                    ));
+                    items.push(crear_item(
+                        "find",
+                        "Método de arreglo",
+                        "find(",
+                    ));
                 }
                 let mut resultado = HashMap::new();
                 resultado.insert(
@@ -311,7 +306,7 @@ impl LSP {
                 contenido.insert(
                     "value".to_string(),
                     ValorJson::Cadena(
-                        "Argo v1.5.0 — Lenguaje de programación".to_string(),
+                        "Argo v1.5.1 — Lenguaje de programación".to_string(),
                     ),
                 );
                 let mut resultado = HashMap::new();
@@ -355,7 +350,7 @@ fn crear_item(etiqueta: &str, detalle: &str, texto_insert: &str) -> ValorJson {
 }
 
 pub fn ejecutar_lsp() {
-    let mut servidor = LSP::nuevo();
+    let mut servidor = Lsp::nuevo();
     servidor.ejecutar();
 }
 
@@ -411,10 +406,10 @@ fn parsear_cadena(chars: &[char], i: usize) -> (ValorJson, usize) {
                 'u' => {
                     if j + 4 < chars.len() {
                         let hex: String = chars[j+1..j+5].iter().collect();
-                        if let Ok(c) = u32::from_str_radix(&hex, 16) {
-                            if let Some(c) = char::from_u32(c) {
-                                s.push(c);
-                            }
+                        if let Ok(c) = u32::from_str_radix(&hex, 16)
+                            && let Some(c) = char::from_u32(c)
+                        {
+                            s.push(c);
                         }
                         j += 4;
                     }
@@ -465,11 +460,8 @@ fn parsear_nulo(chars: &[char], i: usize) -> (ValorJson, usize) {
 fn parsear_arreglo(chars: &[char], i: usize) -> (ValorJson, usize) {
     let mut j = i + 1;
     let mut arr = Vec::new();
-    loop {
-        match saltar_espacios(chars, j) {
-            Some(p) => j = p,
-            None => break,
-        }
+    while let Some(p) = saltar_espacios(chars, j) {
+        j = p;
         if j >= chars.len() || chars[j] == ']' {
             j += 1;
             break;
@@ -477,9 +469,10 @@ fn parsear_arreglo(chars: &[char], i: usize) -> (ValorJson, usize) {
         let (val, k) = parsear_valor(chars, j);
         arr.push(val);
         j = k;
-        match saltar_espacios(chars, j) {
-            Some(p) => j = p,
-            None => break,
+        if let Some(p) = saltar_espacios(chars, j) {
+            j = p;
+        } else {
+            break;
         }
         if j < chars.len() && chars[j] == ',' {
             j += 1;
@@ -491,20 +484,18 @@ fn parsear_arreglo(chars: &[char], i: usize) -> (ValorJson, usize) {
 fn parsear_objeto(chars: &[char], i: usize) -> (ValorJson, usize) {
     let mut j = i + 1;
     let mut obj = HashMap::new();
-    loop {
-        match saltar_espacios(chars, j) {
-            Some(p) => j = p,
-            None => break,
-        }
+    while let Some(p) = saltar_espacios(chars, j) {
+        j = p;
         if j >= chars.len() || chars[j] == '}' {
             j += 1;
             break;
         }
         let (clave, k) = parsear_cadena(chars, j);
         j = k;
-        match saltar_espacios(chars, j) {
-            Some(p) => j = p,
-            None => break,
+        if let Some(p) = saltar_espacios(chars, j) {
+            j = p;
+        } else {
+            break;
         }
         if j < chars.len() && chars[j] == ':' {
             j += 1;
@@ -514,9 +505,10 @@ fn parsear_objeto(chars: &[char], i: usize) -> (ValorJson, usize) {
             obj.insert(c, valor);
         }
         j = k;
-        match saltar_espacios(chars, j) {
-            Some(p) => j = p,
-            None => break,
+        if let Some(p) = saltar_espacios(chars, j) {
+            j = p;
+        } else {
+            break;
         }
         if j < chars.len() && chars[j] == ',' {
             j += 1;

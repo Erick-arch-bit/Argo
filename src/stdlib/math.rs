@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::evaluator::{LlaveHash, Objeto};
 
+#[allow(clippy::result_large_err)]
 fn extraer_f64(args: Vec<Objeto>) -> Result<f64, Objeto> {
     if args.len() != 1 {
         return Err(Objeto::Error(
@@ -19,6 +20,7 @@ fn extraer_f64(args: Vec<Objeto>) -> Result<f64, Objeto> {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn extraer_dos_f64(args: Vec<Objeto>) -> Result<(f64, f64), Objeto> {
     if args.len() != 2 {
         return Err(Objeto::Error(

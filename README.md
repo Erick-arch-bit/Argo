@@ -1,9 +1,9 @@
-# Argo v1.5.0
+# Argo v1.5.1
 
 Argo es un lenguaje de programación interpretado, minimalista y extensible, escrito en Rust **sin dependencias externas**.
 
 ```bash
-curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.3.0/install.sh | bash
+curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.1/install.sh | bash
 ```
 
 ## Características
@@ -11,6 +11,10 @@ curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.3.0/i
 | Área | Detalle |
 |------|---------|
 | **Tipos** | Entero (`i64`), Flotante (`f64`), Booleano, Cadena, Nulo, Arreglo, Diccionario, Buffer, Función |
+| **Structs** | `struct Nombre { campo1, campo2 }` — tipos compuestos con acceso por `.` |
+| **Enums** | `enum Nombre { Var1, Var2(campo) }` — variantes con datos opcionales |
+| **Match** | `match (valor) { Patron => expr, ... }` — pattern matching con bindings |
+| **FFI** | `extern fn nombre(args)` — simulación de funciones nativas (listo para wgpu) |
 | **Control** | `if/else`, `while`, `for`, `break`, `try/catch`, `throw` |
 | **Variables** | `let` (mutable), `const` (inmutable, verificado en runtime) |
 | **Funciones** | Declarativas `fn nombre(){}`, anónimas `fn(){}`, closures con ámbito léxico |
@@ -53,29 +57,37 @@ argo install          Instala dependencias desde argo.toml
 ```
 
 ```rust
-print("Hola desde Argo v1.5.0");
+print("Hola desde Argo v1.5.1");
 
-// Constante inmutable
-const PI = 3.1416;
-let radio = 5;
-print("Área:", PI * radio * radio);
+// Structs y Enums
+struct Rect { x, y }
+enum Evento { Clic(x, y), Nada }
 
-// Fibonnaci recursivo
+let r = Rect { x: 10, y: 20 };
+let e = Evento::Clic(15, 25);
+print(r.x, r.y);
+
+// Match con pattern matching
+match (e) {
+    Clic(x, y) => print("Click en", x, y),
+    Nada => print("Sin evento")
+}
+
+// FFI simulado (listo para wgpu)
+extern fn render_clear(r, g, b);
+render_clear(0.5, 0.5, 1.0);
+
+// Funciones y closures
 fn fib(n) {
     if (n <= 1) return n;
     return fib(n - 1) + fib(n - 2);
 }
 print("fib(10):", fib(10));
 
-// GPU — framebuffer por software
-let fb = gpu.crear_buffer(200, 100);
-fb = gpu.limpiar(fb, 20, 20, 80);
-fb = gpu.circulo(fb, 100, 50, 40, 255, 200, 0);
-gpu.guardar(fb, "output.ppm");
-
-// Módulos
-let lib = import "lib.argo";
-let remoto = import "https://ejemplo.com/mod.argo";
+// Iteradores funcionales
+let nums = [1, 2, 3, 4, 5];
+let dobles = arr.map(nums, fn(x) { x * 2 });
+let suma = arr.reduce(nums, fn(acc, x) { acc + x }, 0);
 
 // Manejo de errores
 try {
@@ -83,18 +95,6 @@ try {
 } catch (e) {
     print("Error:", e);
 }
-
-// Throw personalizado
-fn verificar(valor) {
-    if (valor < 0) { throw "valor negativo no permitido" }
-    return valor;
-}
-
-// Iteradores funcionales
-let nums = [1, 2, 3, 4, 5];
-let dobles = arr.map(nums, fn(x) { x * 2 });
-let pares = arr.filter(nums, fn(x) { x % 2 == 0 });
-let suma = arr.reduce(nums, fn(acc, x) { acc + x }, 0);
 
 // Testing
 assert(1 + 1 == 2, "matematicas basicas");
@@ -104,7 +104,7 @@ assert(1 + 1 == 2, "matematicas basicas");
 
 ### Script automático (recomendado)
 ```bash
-curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.0/install.sh | bash
+curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.1/install.sh | bash
 ```
 Detecta SO/arquitectura (linux-amd64, linux-arm64, darwin-amd64, darwin-arm64) y descarga el binario precompilado. Si falla, compila desde fuente.
 

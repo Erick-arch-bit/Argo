@@ -239,6 +239,18 @@ pub enum Objeto {
         entorno: Entorno,
         nombre: Option<String>,
     },
+
+    // EnumDef — Definición de un tipo enumerado
+    // Se almacena como `Objeto::EnumDef(Vec<(String, Vec<String>)>)`:
+    // cada variante tiene nombre y lista de nombres de campos.
+    EnumDef(Vec<(String, Vec<String>)>),
+
+    // EnumValor — Valor de una variante de enum
+    // Almacena el nombre de la variante y los valores de sus campos.
+    EnumValor {
+        variante: String,
+        campos: Vec<Objeto>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +281,8 @@ impl Objeto {
             Objeto::Canal(_) => Err("Las claves de diccionario no pueden ser canales".to_string()),
             Objeto::StructDef(_) => Err("Las claves de diccionario no pueden ser definiciones de struct".to_string()),
             Objeto::Instancia { .. } => Err("Las claves de diccionario no pueden ser instancias de struct".to_string()),
+            Objeto::EnumDef(_) => Err("Las claves de diccionario no pueden ser definiciones de enum".to_string()),
+            Objeto::EnumValor { .. } => Err("Las claves de diccionario no pueden ser valores de enum".to_string()),
             Objeto::Nulo => Err("Las claves de diccionario no pueden ser nulo".to_string()),
             Objeto::Retorno(_) => Err("Las claves de diccionario no pueden ser retornos".to_string()),
             Objeto::Break => Err("Las claves de diccionario no pueden ser break".to_string()),
@@ -306,10 +320,16 @@ impl Objeto {
             (Objeto::Buffer(a), Objeto::Buffer(b)) => a == b,
             (Objeto::Canal(a), Objeto::Canal(b)) => Arc::ptr_eq(a, b),
             (Objeto::StructDef(a), Objeto::StructDef(b)) => a == b,
+            (Objeto::EnumDef(a), Objeto::EnumDef(b)) => a == b,
+            (Objeto::EnumValor { variante: va, campos: ca }, Objeto::EnumValor { variante: vb, campos: cb }) => {
+                va == vb
+                    && ca.len() == cb.len()
+                    && ca.iter().zip(cb.iter()).all(|(x, y)| x.son_iguales(y))
+            }
             (Objeto::Instancia { nombre: na, campos: ca }, Objeto::Instancia { nombre: nb, campos: cb }) => {
                 na == nb
                     && ca.len() == cb.len()
-                    && ca.iter().all(|(k, v)| cb.get(k).map_or(false, |w| v.son_iguales(w)))
+                    && ca.iter().all(|(k, v)| cb.get(k).is_some_and(|w| v.son_iguales(w)))
             }
             _ => false,
         }
@@ -385,7 +405,7 @@ impl fmt::Display for Objeto {
             Objeto::Error(mensaje, traza) => {
                 write!(f, "error: {}", mensaje)?;
                 for func in traza.iter().rev() {
-                    let _ = writeln!(f, "");
+                    let _ = writeln!(f);
                     let _ = write!(f, "  en {}()", func);
                 }
                 Ok(())
@@ -398,7 +418,7 @@ impl fmt::Display for Objeto {
                     let pila = pila.borrow();
                     if !pila.is_empty() {
                         for func in pila.iter().rev() {
-                            let _ = writeln!(f, "");
+                            let _ = writeln!(f);
                             let _ = write!(f, "  en {}()", func);
                         }
                     }
@@ -462,6 +482,31 @@ impl fmt::Display for Objeto {
             // Canal: muestra un identificador único del canal.
             Objeto::Canal(_) => {
                 write!(f, "<Canal>")
+            }
+
+            Objeto::EnumDef(variantes) => {
+                write!(f, "enum {{")?;
+                for (i, (nom, campos)) in variantes.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", nom)?;
+                    if !campos.is_empty() {
+                        write!(f, "({})", campos.join(", "))?;
+                    }
+                }
+                write!(f, "}}")
+            }
+
+            Objeto::EnumValor { variante, campos } => {
+                write!(f, "{}", variante)?;
+                if !campos.is_empty() {
+                    write!(f, "(")?;
+                    for (i, v) in campos.iter().enumerate() {
+                        if i > 0 { write!(f, ", ")?; }
+                        write!(f, "{}", v)?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
             }
 
             // Funcion: mostrar un resumen informativo. No se imprime

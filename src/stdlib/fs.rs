@@ -16,6 +16,7 @@ fn ruta_es_segura(ruta: &str) -> bool {
     true
 }
 
+#[allow(clippy::result_large_err)]
 fn validar_ruta(args: &[Objeto], idx: usize) -> Result<String, Objeto> {
     match args.get(idx) {
         Some(Objeto::Cadena(r)) => {
@@ -48,6 +49,8 @@ fn validar_ruta(args: &[Objeto], idx: usize) -> Result<String, Objeto> {
                 Objeto::Continue => "continue",
                 Objeto::Error(_, _) => "error",
                 Objeto::Canal(_) => "canal",
+                Objeto::EnumDef(_) => "enum_def",
+                Objeto::EnumValor { .. } => "enum_valor",
                 Objeto::Excepcion(_) => "excepcion",
             }
         ), Vec::new())),
@@ -188,13 +191,10 @@ pub fn crear_modulo() -> Objeto {
         match std::fs::read_dir(&ruta) {
             Ok(entries) => {
                 let mut lista = Vec::new();
-                for entry in entries {
-                    match entry {
-                        Ok(e) => lista.push(Objeto::Cadena(
-                            e.file_name().to_string_lossy().to_string()
-                        )),
-                        Err(_) => {}
-                    }
+                for e in entries.flatten() {
+                    lista.push(Objeto::Cadena(
+                        e.file_name().to_string_lossy().to_string()
+                    ))
                 }
                 Objeto::Arreglo(lista)
             }

@@ -48,6 +48,23 @@ pub enum Statement {
         nombre: String,
         campos: Vec<String>,
     },
+
+    /// Definición de enumeración: `enum Nombre { Var1, Var2(tipo: Tipo) }`
+    EnumDefinicion {
+        nombre: String,
+        variantes: Vec<VarianteEnum>,
+    },
+
+    /// Declaración de función externa (FFI): `extern fn nombre(args...);`
+    ExternFn {
+        nombre: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct VarianteEnum {
+    pub nombre: String,
+    pub campos: Vec<(String, String)>, // (nombre, tipo)
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +135,13 @@ pub enum Expression {
     /// Throw expression: `throw <expr>`
     /// Evalúa la expresión y retorna un error (excepción) con ese valor.
     Throw(Box<Expression>),
+
+    /// Instancia de variante enum: `Nombre::Variante(args...)`
+    EnumInstancia {
+        enum_nombre: String,
+        variante: String,
+        argumentos: Vec<Expression>,
+    },
 }
 
 /// Patrón para match: literales, wildcard `_`, binding, struct/array
@@ -128,4 +152,10 @@ pub enum Patron {
     Binding(String),
     Struct(String, Vec<(String, Box<Patron>)>),
     Arreglo(Vec<Patron>),
+    /// Patrón de enum: `Variante` o `Variante(a, b)`
+    #[allow(clippy::enum_variant_names)]
+    EnumPatron {
+        nombre: String,
+        bindings: Vec<String>,
+    },
 }

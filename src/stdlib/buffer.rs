@@ -22,10 +22,13 @@ fn tipo_objeto(o: &Objeto) -> &'static str {
         Objeto::Continue => "continue",
         Objeto::Error(_, _) => "error",
         Objeto::Canal(_) => "canal",
+        Objeto::EnumDef(_) => "enum_def",
+        Objeto::EnumValor { .. } => "enum_valor",
         Objeto::Excepcion(_) => "excepcion",
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn extraer_entero(args: &[Objeto], idx: usize, nombre: &str) -> Result<i64, Objeto> {
     match args.get(idx) {
         Some(Objeto::Entero(v)) => Ok(*v),
@@ -41,6 +44,7 @@ fn extraer_entero(args: &[Objeto], idx: usize, nombre: &str) -> Result<i64, Obje
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn extraer_buffer(args: &[Objeto], idx: usize) -> Result<&Vec<u8>, Objeto> {
     match args.get(idx) {
         Some(Objeto::Buffer(v)) => Ok(v),

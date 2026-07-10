@@ -25,8 +25,7 @@ curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.3/i
 | **Iteradores** | `arr.map(fn)`, `.filter()`, `.reduce()`, `.find()`, `.every()`, `.some()` |
 | **Concurrencia** | `thread.spawn("código")`, canales `canal.nuevo()` |
 | **GPU** | Framebuffer por software: `gpu.crear_buffer`, `.pixel`, `.linea`, `.rect`, `.circulo`, `.guardar`, `.mostrar` |
-| **TUI** | Terminal UI nativo: `ui.ventana`, `ui.texto`, `ui.boton`, `ui.ejecutar` — ANSI escape codes |
-| **IX** | Window manager: `ix.crear_ventana`, `ix.mover_ventana`, `ix.ejecutar` — ventanas flotantes con z-ordering |
+| **TUI** | Motor de renderizado de alto rendimiento: doble buffer, dirty-rect, animaciones Lerp, ~30 FPS |
 | **Caché** | AST serializado a `.argbc` — segunda ejecución instantánea |
 | **Package manager** | `argo install` — lee `[dependencies]` de `argo.toml` |
 
@@ -45,9 +44,7 @@ curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.3/i
 | `json` | `parsear`, `stringificar` |
 | `thread` | `spawn` |
 | `gpu` | `crear_buffer`, `pixel`, `linea`, `rect`, `circulo`, `guardar`, `mostrar`, `limpiar` |
-| `ui` | `tema`, `columna`, `fila`, `texto`, `boton`, `input`, `separador`, `ejecutar`, `limpiar`, `reset` |
-| `ix` | `crear_ventana`, `mover_ventana`, `cambiar_foco`, `cerrar_ventana`, `ejecutar`, `listar_ventanas`, `info_ventana` |
-| `render` | Motor interno: `RenderEngine`, dirty-rect diffing, `AnsiBuf` zero-alloc |
+| `ui` | `tema`, `columna`, `fila`, `texto`, `boton`, `barra_progreso`, `rectangulo`, `input`, `separador`, `animar`, `ejecutar`, `limpiar`, `reset` |
 | Built-in | `print`, `len`, `push`, `tipo`, `assert`, `typeof` |
 
 ## Uso
@@ -106,18 +103,39 @@ try {
 // Testing
 assert(1 + 1 == 2, "matematicas basicas");
 
-// Terminal UI nativo
-ui.tema({ bg: "#2b2b2b", fg: "#ffffff", primary: "#3b82f6" });
-let root = ui.columna(0, 1);
-ui.texto(root, "Bienvenido a Argo TUI!");
-let btn = ui.boton(root, " Click me ", 1);
-let accion = ui.ejecutar();
+// Terminal UI de alto rendimiento (doble buffer, ~30 FPS)
+ui.tema({ bg: "#2b2b2b", fg: "#ffffff", primary: "#3b82f6", accent: "#10b981" });
 
-// Window Manager (ix)
-let w1 = ix.crear_ventana("Mi Ventana", 30, 10);
-let w2 = ix.crear_ventana("Otra", 20, 8, { x: 50, y: 20 });
-ix.ejecutar();
+let root = ui.columna(0, 1);
+ui.texto(root, "Mi Aplicación", { grande: true });
+ui.separador(root);
+ui.texto(root, "Bienvenido a Argo TUI");
+let btn = ui.boton(root, " Iniciar ", 1);
+let barra = ui.barra_progreso(root, 0, { color: "#10b981", ancho: 30 });
+
+// Animar la barra de progreso de 0 a 100 en 2 segundos
+ui.animar(barra, "valor", 100, 2000);
+
+let accion = ui.ejecutar();
+if (accion == 1) {
+    print("Iniciado!");
+}
 ```
+
+## Motor de renderizado TUI
+
+El módulo `ui` implementa un motor de renderizado de alto rendimiento:
+
+| Característica | Detalle |
+|---|---|
+| **Doble buffer** | backbuffer/frontbuffer con diffing — solo dibuja celdas modificadas |
+| **Dirty-rect** | Tracking de celdas sucias para flush mínimo |
+| **AnsiBuf** | Buffer de 4KB en stack para escritura ANSI zero-alloc |
+| **~30 FPS** | Game loop controlado por tiempo (33ms por frame) |
+| **Animaciones** | Interpolación lineal (Lerp) con ease-in-out |
+| **Colores** | RGB 24-bit por celda, soporte hex #RRGGBB y nombres |
+| **Input** | No bloqueante via ioctl FIONREAD |
+| **Cero dependencias** | Solo std de Rust |
 
 ## Instalación
 

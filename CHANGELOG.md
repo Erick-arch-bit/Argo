@@ -2,26 +2,32 @@
 
 ## v1.5.3 — 2026-07-09
 
-### Nuevo: Documentación completa
-- Carpeta `docs/` con documentación de cada módulo de la stdlib
-- `docs/arr.md` — Operaciones con arreglos
-- `docs/buffer.md` — Buffers binarios
-- `docs/fs.md` — Sistema de archivos
-- `docs/gpu.md` — Framebuffer por software
-- `docs/json.md` — JSON
-- `docs/math.md` — Matemáticas
-- `docs/net.md` — Red
-- `docs/os.md` — Sistema operativo
-- `docs/str.md` — Cadenas de texto
-- `docs/thread.md` — Concurrencia
-- `docs/time.md` — Tiempo
-- `docs/ui.md` — Interfaz de terminal (TUI)
-- `docs/ix.md` — Window manager
-- `docs/render.md` — Motor de renderizado interno
+### Reescritura completa del módulo TUI
+- **Eliminados:** `ix/` (window manager), `render.rs` (motor antiguo), `layout.rs` (layout antiguo)
+- **Nuevo `engine.rs`:** MotorRenderizado con doble buffer, dirty-rect diffing, AnsiBuf 4KB zero-alloc
+- **Nuevo `widgets.rs`:** ArbolUI con HashMap O(1), layout Flexbox simplificado (Columna/Fila/Area)
+- **Nuevo `animaciones.rs`:** Motor de animaciones con Lerp, ease-in-out, tick-based
+- **Nuevo `mod.rs`:** Game loop a ~30 FPS, input no bloqueante via ioctl FIONREAD
+- **API completa:** `ui.tema`, `ui.columna`, `ui.fila`, `ui.texto`, `ui.boton`, `ui.barra_progreso`, `ui.rectangulo`, `ui.input`, `ui.separador`, `ui.animar`, `ui.ejecutar`
 
-### Actualizado
-- README.md con documentación de ix y render
-- Versión bump a 1.5.3 en todos los archivos
+### Características del motor
+- Doble buffer con diffing de celdas individuales
+- Dirty-rect tracking para flush mínimo
+- AnsiBuf de 4KB en stack para escritura ANSI sin allocaciones
+- Detección de terminal via stty (Unix) con fallback 80x24
+- Colores RGB 24-bit por celda
+- Soporte hex #RRGGBB y nombres (rojo, azul, etc.)
+- Input no bloqueante via ioctl FIONREAD
+- CERO dependencias externas
+
+### Documentación
+- Carpeta `docs/` con documentación de cada módulo
+- `docs/ui.md` actualizado con nueva API y arquitectura
+- README.md actualizado con tabla de características TUI
+
+### Eliminados
+- `docs/ix.md` — Window manager eliminado
+- `docs/render.md` — Motor antiguo eliminado
 
 ---
 

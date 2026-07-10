@@ -9,12 +9,10 @@ pub mod arr;
 pub mod buffer;
 pub mod fs;
 pub mod gpu;
-pub mod ix;
 pub mod json;
 pub mod math;
 pub mod net;
 pub mod os;
-pub mod render;
 pub mod str;
 pub mod thread;
 pub mod time;
@@ -37,5 +35,4 @@ pub fn inyectar_stdlib(entorno: &mut Entorno) {
     entorno.asignar("thread".to_string(), thread::crear_modulo());
     entorno.asignar("gpu".to_string(), gpu::crear_modulo());
     entorno.asignar("ui".to_string(), ui::crear_modulo());
-    entorno.asignar("ix".to_string(), ix::crear_modulo());
 }

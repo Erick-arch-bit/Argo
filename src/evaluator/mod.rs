@@ -847,12 +847,23 @@ fn evaluar_sentencia_while(
         }
 
         // 4. Evaluar el cuerpo del bucle.
-        //    Normalmente cuerpo es un Bloque { ... }, que a su vez
-        //    llama a evaluar_bloque, el cual crea un sub-entorno.
-        //    Las variables declaradas dentro del cuerpo se aíslan
-        //    en ese sub-entorno y se dropean al final de cada
-        //    iteración (no persisten entre ciclos).
-        let resultado_cuerpo = evaluar_sentencia(cuerpo, entorno);
+        //    Si el cuerpo es un Bloque, ejecutar sus sentencias directamente
+        //    en el entorno actual (sin clonar) para que las modificaciones
+        //    de variables persistan entre iteraciones.
+        let resultado_cuerpo = match cuerpo {
+            Statement::Bloque(sentencias) => {
+                let mut resultado = Objeto::Nulo;
+                for sentencia in sentencias {
+                    resultado = evaluar_sentencia(sentencia, entorno);
+                    match &resultado {
+                        Objeto::Error(_, _) | Objeto::Excepcion(_) | Objeto::Retorno(_) | Objeto::Break | Objeto::Continue => break,
+                        _ => {}
+                    }
+                }
+                resultado
+            }
+            _ => evaluar_sentencia(cuerpo, entorno),
+        };
 
         // 5. Escape estricto: si el cuerpo produjo Retorno o Error,
         //    propagarlo inmediatamente al llamante. Esto asegura que

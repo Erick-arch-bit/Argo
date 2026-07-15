@@ -241,6 +241,49 @@ impl<'a> Parser<'a> {
             });
         }
 
+        // += y -=: Azucar sintáctica para `x = x + expr` y `x = x - expr`
+        if self.token_siguiente == Token::SumaAsignacion {
+            let nombre_var = match self.avanzar() {
+                Token::Identificador(n) => n,
+                _ => {
+                    self.error_token_esperado("identificador para += ");
+                    return None;
+                }
+            };
+            self.avanzar();
+            let valor = self.parsear_expresion(Precedencia::Menor)?;
+            let valor_binario = Expression::OperacionBinaria {
+                operador: Token::Suma,
+                izquierda: Box::new(Expression::Identificador(nombre_var.clone())),
+                derecha: Box::new(valor),
+            };
+            return Some(Statement::AsignacionVariable {
+                nombre: nombre_var,
+                valor: valor_binario,
+            });
+        }
+
+        if self.token_siguiente == Token::RestaAsignacion {
+            let nombre_var = match self.avanzar() {
+                Token::Identificador(n) => n,
+                _ => {
+                    self.error_token_esperado("identificador para -= ");
+                    return None;
+                }
+            };
+            self.avanzar();
+            let valor = self.parsear_expresion(Precedencia::Menor)?;
+            let valor_binario = Expression::OperacionBinaria {
+                operador: Token::Resta,
+                izquierda: Box::new(Expression::Identificador(nombre_var.clone())),
+                derecha: Box::new(valor),
+            };
+            return Some(Statement::AsignacionVariable {
+                nombre: nombre_var,
+                valor: valor_binario,
+            });
+        }
+
         // Si no es asignación, proceder con el match normal.
         // Se evalúa el token actual por referencia para no consumirlo.
         // El match cubre explícitamente solo los tokens que inician sentencia;

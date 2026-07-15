@@ -26,6 +26,57 @@ use evaluator::{configurar_entorno_global, evaluar_programa, Objeto};
 mod parser;
 
 // ===========================================================================
+// mostrar_logo — ASCII art del pulpo de Argo
+// ===========================================================================
+fn mostrar_logo() {
+    let lila  = "\x1b[38;5;99m";
+    let naranja = "\x1b[38;5;208m";
+    let cyan  = "\x1b[38;5;117m";
+    let gris  = "\x1b[38;5;240m";
+    let r     = "\x1b[0m";
+
+    println!();
+    println!("{}          ++++++++*{}", lila, r);
+    println!("{}                                                                    ++++*#++++{}", lila, r);
+    println!("{}                                                                     *++++++++*{}", lila, r);
+    println!("{}                                                                 +++++++++++* *+++++++{}", cyan, r);
+    println!("{}                                                                *+++++*  *++++++++++++++{}", cyan, r);
+    println!("{}                                                                ** *+++++++++++++++++++++{}", cyan, r);
+    println!("{}                                                               *++++++++++++++++++++++++++{}", cyan, r);
+    println!("{}                                                             ++++++++++++*  #*++++++++++++*{}", cyan, r);
+    println!("{}                                                            *+++++++  *++++++++++++++++++++++++*{}", cyan, r);
+    println!("{}                                                           *+++*  ++++++++++++++++++++++++++++++++*{}", cyan, r);
+    println!("{}                                                           #+* *++++++++++++++++     ++    *++++++++*{}", cyan, r);
+    println!("{}                                                             +++++++++++++++* ++============++ +++++++{}", cyan, r);
+    println!("{}                                                           +++++++++++++++**+==================+ ++++++{}", cyan, r);
+    println!("{}                                                          +++++++++++++++ +======================+*++++{}", cyan, r);
+    println!("{}                                                         +++++++++++++++ +========================+ +++{}", cyan, r);
+    println!("{}                                                         ++++++++++++++ +==========================**++{}", cyan, r);
+    println!("{}                                                        +++++++++++++++ +======================-==== *+{}", cyan, r);
+    println!("{}                                                        +++++++++++++++ ========:   :+========   .==+{}", naranja, r);
+    println!("{}                                                        +++++++++++++++ =======       -=======    ==+{}", naranja, r);
+    println!("{}                                                        +++++++++++++++**=====-       -===-::==..-==+++#{}", naranja, r);
+    println!("{}                                                         +++++++++++++++ +=====-.   .-====--========**++{}", naranja, r);
+    println!("{}                                                         ++++++++++++++++ +=======================+**+++*{}", naranja, r);
+    println!("{}                                                          ++++++++++++++++* +=====================+ ++++{}", naranja, r);
+    println!("{}                                                           +++++++++++++++++* +++=============+++ +++++*{}", naranja, r);
+    println!("{}                                                            ++++++++++++++++++++  ++++=+=+++=  *+++++++{}", naranja, r);
+    println!("{}                                                             *+++++++++++++++++++++++++++++++++++++++{}", naranja, r);
+    println!("{}                                                                ++++++++++++++++++++++++++++++++++*{}", naranja, r);
+    println!("{}                                                                  *+++++++++++++++++++++++++++*     +++{}", naranja, r);
+    println!("{}                                                                       *+++++++++++++++++*  ++++   +=+=+{}", gris, r);
+    println!("{}                                                                           +*+ =+++++ ++++=====+   +====={}", gris, r);
+    println!("{}                                                                  +++++   ++++ +====+ +++ +=====+++====={}", gris, r);
+    println!("{}                                                                  ++++++++++++ +===== ++++ +==========+{}", gris, r);
+    println!("{}                                                                    +++++++++ +====+**+++++  +++====++{}", gris, r);
+    println!("{}                                                                        +*  +======  *+++++*   **{}", gris, r);
+    println!("{}                                                                       +=========+    ++++++++++++*{}", gris, r);
+    println!("{}                                                                       +=====+++        +++++++++*{}", gris, r);
+    println!("{}                                                                         *                  *#{}", gris, r);
+    println!();
+}
+
+// ===========================================================================
 // iniciar_animacion — Pantalla de carga animada con el pulpo de Argo
 // ===========================================================================
 // Muestra una animación en bucle con el pulpo mascota, barra de progreso
@@ -680,6 +731,7 @@ fn main() {
     match args.len() {
         // Sin argumentos → REPL interactivo
         1 => {
+            mostrar_logo();
             println!("Argo v2.0.0 - Interprete Nativo");
             println!("Escribe 'exit' para salir.\n");
             iniciar_repl();
@@ -688,9 +740,11 @@ fn main() {
         // Un argumento de usuario
         2 => match args[1].as_str() {
             "--version" | "-v" => {
+                mostrar_logo();
                 println!("argo 2.0.0");
             }
             "init" => {
+                mostrar_logo();
                 iniciar_animacion();
                 generar_proyecto();
             }
@@ -698,6 +752,7 @@ fn main() {
                 ejecutar_proyecto();
             }
             "repl" => {
+                mostrar_logo();
                 println!("Argo v2.0.0 - Interprete Nativo");
                 println!("Escribe 'exit' para salir.\n");
                 iniciar_repl();

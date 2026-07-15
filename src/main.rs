@@ -9,12 +9,11 @@ mod lexer;
 mod ast;
 mod evaluator;
 mod stdlib;
+mod pkg;
 
 use std::io::{self, Write};
 use std::env;
-use std::collections::HashMap;
 use std::fs;
-use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
@@ -424,310 +423,242 @@ fn iniciar_repl() {
 }
 
 // ===========================================================================
-// ejecutar_install — Lee argo.toml, descarga dependencias, genera argo.mod/lock
+// ejecutar_install_v2 — Instalación de dependencias v2.0
 // ===========================================================================
-fn ejecutar_install() {
-    let contenido = match fs::read_to_string("argo.toml") {
-        Ok(c) => c,
-        Err(_) => {
-            println!("\x1b[91mError:\x1b[0m No se encontró 'argo.toml' en el directorio actual.");
-            return;
-        }
-    };
+fn ejecutar_install_v2() {
+    let output = pkg::output::Output::new();
+    let auth = pkg::multihost::AuthTokens::cargar();
 
-    let mut dependencias = HashMap::new();
-    let mut en_deps = false;
+    // Migrar caché antiguo si existe
+    pkg::cache::migrar_cache_antiguo().ok();
 
-    for linea in contenido.lines() {
-        let linea = linea.trim();
-        if linea.starts_with("[dependencies]") {
-            en_deps = true;
-            continue;
-        }
-        if en_deps {
-            if linea.starts_with('[') {
-                break;
-            }
-            if linea.is_empty() || linea.starts_with('#') {
-                continue;
-            }
-            if let Some((clave, valor)) = linea.split_once('=') {
-                let clave = clave.trim().to_string();
-                let valor = valor.trim().trim_matches('"').to_string();
-                if !clave.is_empty() && !valor.is_empty() {
-                    dependencias.insert(clave, valor);
-                }
-            }
-        }
+    // Verificar argo.lock existente
+    let lock_path = std::path::Path::new("argo.lock");
+    if lock_path.exists() {
+        output.dim("  Usando argo.lock existente...");
+        println!();
+        // TODO: usar lockfile existente
     }
 
-    if dependencias.is_empty() {
-        println!("  No se encontraron dependencias en argo.toml.");
-        return;
-    }
+    output.bold("  Resolviendo dependencias...\n");
 
-    // Descargar cada dependencia
-    let dir_cache = std::path::PathBuf::from(
-        std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
-    ).join(".argo").join("cache");
-    fs::create_dir_all(&dir_cache).ok();
-
-    for (alias, url) in &dependencias {
-        print!("  descargando {} de {} ... ", alias, url);
-        io::stdout().flush().ok();
-
-        match evaluator::modulo::fetch_url(url) {
-            Ok(texto) => {
-                // Guardar en proyecto local
-                let dir_deps = Path::new("deps");
-                fs::create_dir_all(dir_deps).ok();
-                let ruta_destino = dir_deps.join(format!("{}.argo", alias));
-                if let Err(e) = fs::write(&ruta_destino, &texto) {
-                    println!("\x1b[91mError\x1b[0m al escribir {}: {}", ruta_destino.display(), e);
-                    continue;
-                }
-                println!("\x1b[32mOK\x1b[0m");
+    match pkg::resolve::resolver_desde_proyecto(&output, &auth, false) {
+        Ok(paquetes) => {
+            if paquetes.is_empty() {
+                output.linea("  No se encontraron dependencias en argo.toml.");
+                return;
             }
-            Err(e) => {
-                println!("\x1b[91mError\x1b[0m: {}", e);
+
+            output.bold("  Descargando paquetes...\n");
+            if let Err(e) = pkg::resolve::instalar_paquetes(&paquetes, &output) {
+                output.error(&e);
+                std::process::exit(1);
             }
+
+            // Generar argo.lock
+            let lock = pkg::resolve::generar_lockfile(&paquetes);
+            lock.guardar(lock_path).ok();
+
+            // Generar argo.mod
+            let mut argo_mod = String::new();
+            for pkg in &paquetes {
+                let alias = pkg.repo.repo.clone();
+                argo_mod.push_str(&format!("{} = vendor/{}/argo.toml\n", alias, pkg.repo.full_name));
+            }
+            std::fs::write("argo.mod", &argo_mod).ok();
+
+            output.verde("✅ Instalación completada.");
+            println!();
+        }
+        Err(e) => {
+            output.error(&e);
+            std::process::exit(1);
         }
     }
-
-    // Generar/actualizar argo.mod (import map)
-    {
-        let mut lineas = String::new();
-        for alias in dependencias.keys() {
-            lineas.push_str(&format!("{} = {}.argo\n", alias, alias));
-        }
-        if let Err(e) = fs::write("argo.mod", &lineas) {
-            println!("\x1b[91mError\x1b[0m al escribir argo.mod: {}", e);
-        } else {
-            println!("  argo.mod actualizado");
-        }
-    }
-
-    // Generar argo.lock
-    {
-        let mut lineas = String::new();
-        lineas.push_str("# argo.lock — generado automáticamente\n");
-        for (alias, url) in &dependencias {
-            let dir_deps = Path::new("deps");
-            let ruta_destino = dir_deps.join(format!("{}.argo", alias));
-            let checksum = fs::read(&ruta_destino)
-                .ok()
-                .map(|b| {
-                    let mut h = std::collections::hash_map::DefaultHasher::new();
-                    b.hash(&mut h);
-                    format!("{:x}", h.finish())
-                })
-                .unwrap_or_else(|| "unknown".to_string());
-            lineas.push_str(&format!("{} = {}#{}", alias, url, checksum));
-            lineas.push('\n');
-        }
-        if let Err(e) = fs::write("argo.lock", &lineas) {
-            println!("\x1b[91mError\x1b[0m al escribir argo.lock: {}", e);
-        } else {
-            println!("  argo.lock generado");
-        }
-    }
-
-    println!("  \x1b[32m✔ Instalación completada.\x1b[0m");
 }
 
 // ===========================================================================
-// ejecutar_update — Auto-actualizar el binario de Argo
+// ejecutar_install_repo — Instalar un paquete específico
 // ===========================================================================
-// Detecta la plataforma, descarga el último release desde GitHub,
-// y reemplaza el binario actual.
-fn ejecutar_update() {
-    use std::process::Command;
+fn ejecutar_install_repo(repo: &str) {
+    let output = pkg::output::Output::new();
+    let auth = pkg::multihost::AuthTokens::cargar();
 
-    let green = "\x1b[32m";
-    let red   = "\x1b[31m";
-    let dim   = "\x1b[2m";
-    let bold  = "\x1b[1m";
-    let reset = "\x1b[0m";
+    pkg::cache::migrar_cache_antiguo().ok();
 
-    println!();
-    println!("  {bold}Argo{reset} {dim}— Auto-actualización{reset}");
-    println!();
-
-    // 1. Detectar plataforma
-    let (os, arch, ext) = match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("linux",  "x86_64")  => ("linux",  "amd64", ""),
-        ("linux",  "aarch64") => ("linux",  "arm64", ""),
-        ("macos",  "x86_64")  => ("darwin", "amd64", ""),
-        ("macos",  "aarch64") => ("darwin", "arm64", ""),
-        ("windows", "x86_64") => ("windows", "amd64", ".exe"),
-        _ => {
-            println!("  {red}✖{reset} Plataforma no soportada: {} {}", std::env::consts::OS, std::env::consts::ARCH);
-            println!("    Actualiza manualmente desde: https://github.com/Erick-arch-bit/Argo-Lang/releases");
-            std::process::exit(1);
-        }
-    };
-
-    let binary_name = format!("argo-{}-{}{}", os, arch, ext);
-    let repo = "Erick-arch-bit/Argo-Lang";
-    let url = format!("https://github.com/{}/releases/latest/download/{}", repo, binary_name);
-
-    // 2. Obtener el path del binario actual
-    let current_exe = match std::env::current_exe() {
-        Ok(p) => p,
+    let info = match pkg::multihost::RepoInfo::parsear(repo) {
+        Ok(i) => i,
         Err(e) => {
-            println!("  {red}✖{reset} No se pudo obtener la ruta del binario: {}", e);
+            output.error(&e);
             std::process::exit(1);
         }
     };
 
-    // 3. Descargar a archivo temporal
-    println!("  {dim}│{reset} Descargando {binary_name}...");
+    output.bold(&format!("  Descargando {}...\n", info.full_name));
 
-    let tmp_dir = std::env::temp_dir();
-    let tmp_file = tmp_dir.join(format!("argo-update-{}.tmp{}", arch, ext));
-
-    // Intentar curl primero, luego wget
-    let downloaded = Command::new("curl")
-        .args(["-sSL", "-o", tmp_file.to_str().unwrap(), &url])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-
-    let downloaded = if !downloaded {
-        Command::new("wget")
-            .args(["-q", "-O", tmp_file.to_str().unwrap(), &url])
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    } else {
-        true
-    };
-
-    if !downloaded {
-        println!("  {red}✖{reset} No se pudo descargar. Verifica tu conexión.");
-        let _ = fs::remove_file(&tmp_file);
-        std::process::exit(1);
-    }
-
-    // 4. Verificar que el archivo no esté vacío (descarga fallida = HTML de error)
-    let meta = match fs::metadata(&tmp_file) {
-        Ok(m) => m,
-        Err(_) => {
-            println!("  {red}✖{reset} Error al leer el archivo descargado.");
-            let _ = fs::remove_file(&tmp_file);
-            std::process::exit(1);
-        }
-    };
-
-    if meta.len() < 1000 {
-        // Archivo muy pequeño — probablemente es un HTML de error 404
-        let content = fs::read_to_string(&tmp_file).unwrap_or_default();
-        if content.contains("Not Found") || content.contains("404") {
-            println!("  {red}✖{reset} Release no encontrado en GitHub.");
-            println!("    URL: {url}");
-            let _ = fs::remove_file(&tmp_file);
-            std::process::exit(1);
-        }
-    }
-
-    // 5. Hacer ejecutable (Unix)
-    #[cfg(not(target_os = "windows"))]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&tmp_file, fs::Permissions::from_mode(0o755));
-    }
-
-    // 6. Reemplazar el binario actual
-    if cfg!(target_os = "windows") {
-        // Windows: no puede reemplazar un exe en ejecución.
-        // Estrategia: descargar nuevo → renombrar actual → batch script post-exit
-        let new_path = tmp_dir.join(format!("argo-new-{}.exe", arch));
-        let _ = fs::rename(&tmp_file, &new_path);
-
-        let old_path = tmp_dir.join(format!("argo-old-{}.exe", arch));
-        let _ = fs::remove_file(&old_path);
-        let _ = fs::rename(&current_exe, &old_path);
-
-        // Intentar rename, si falla usar copy
-        let moved = fs::rename(&new_path, &current_exe).is_ok();
-        if !moved {
-            if let Err(e) = fs::copy(&new_path, &current_exe) {
-                let _ = fs::rename(&old_path, &current_exe);
-                let _ = fs::remove_file(&new_path);
-                println!("  {red}✖{reset} No se pudo reemplazar el binario: {}", e);
-                println!("    Descarga manualmente desde: https://github.com/{repo}/releases");
-                std::process::exit(1);
+    // Resolver solo este paquete
+    let estado = pkg::resolve::resolver_desde_proyecto(&output, &auth, false);
+    match estado {
+        Ok(paquetes) => {
+            // Agregar este paquete si no está
+            if !paquetes.iter().any(|p| p.repo.full_name == info.full_name) {
+                // Resolver manualmente
+                output.error(&format!("Paquete '{}' no encontrado en argo.toml.", repo));
+                output.linea("  Agrega la dependencia a argo.toml primero:");
+                output.linea(&format!("    [dependencies]\n    \"{}\" = \"*\"", info.full_name));
+            } else {
+                if let Err(e) = pkg::resolve::instalar_paquetes(&paquetes, &output) {
+                    output.error(&e);
+                    std::process::exit(1);
+                }
+                output.verde("✅ Instalación completada.");
+                println!();
             }
-            let _ = fs::remove_file(&new_path);
         }
+        Err(e) => {
+            output.error(&e);
+            std::process::exit(1);
+        }
+    }
+}
 
-        // Crear script para limpiar el binario antiguo
-        let cleanup = format!(
-            "@echo off\r\n\
-             timeout /t 2 /nobreak >nul\r\n\
-             del \"{}\" 2>nul\r\n\
-             echo Argo actualizado exitosamente.\r\n",
-            old_path.display()
-        );
-        let bat_path = tmp_dir.join("argo-cleanup.bat");
-        let _ = fs::write(&bat_path, cleanup);
-        let _ = Command::new("cmd").args(["/C", bat_path.to_str().unwrap()]).spawn();
+// ===========================================================================
+// ejecutar_list — Listar paquetes instalados
+// ===========================================================================
+fn ejecutar_list() {
+    let output = pkg::output::Output::new();
+    pkg::cache::migrar_cache_antiguo().ok();
 
+    match pkg::cache::CacheIndex::cargar() {
+        Ok(index) => {
+            if index.entries.is_empty() {
+                output.linea("  No hay paquetes instalados.");
+                return;
+            }
+            output.bold("  Paquetes instalados:\n");
+            for entry in &index.entries {
+                let size_kb = entry.size_bytes as f64 / 1024.0;
+                output.linea(&format!(
+                    "    {} {} ({:.1} KB, {} archivos)",
+                    entry.name, entry.version, size_kb, entry.file_count
+                ));
+            }
+        }
+        Err(e) => {
+            output.error(&e);
+        }
+    }
+}
+
+// ===========================================================================
+// ejecutar_clean — Limpiar caché
+// ===========================================================================
+fn ejecutar_clean(all: bool) {
+    let output = pkg::output::Output::new();
+    pkg::cache::migrar_cache_antiguo().ok();
+
+    match pkg::cache::CacheIndex::cargar() {
+        Ok(mut index) => {
+            if all {
+                index.entries.clear();
+                output.verde("  Caché limpiada completamente.");
+            } else {
+                let now = pkg::cache::ahora_secs();
+                let antes = index.entries.len();
+                index.entries.retain(|e| {
+                    let dias = (now - e.last_used) / 86400;
+                    dias < 30
+                });
+                let eliminados = antes - index.entries.len();
+                output.verde(&format!("  {} paquetes eliminados del caché.", eliminados));
+            }
+            index.guardar().ok();
+        }
+        Err(e) => {
+            output.error(&e);
+        }
+    }
+}
+
+// ===========================================================================
+// ejecutar_update_v2 — Actualizar dependencias
+// ===========================================================================
+fn ejecutar_update_v2(paquete: Option<&str>) {
+    let output = pkg::output::Output::new();
+
+    if let Some(nombre) = paquete {
+        output.bold(&format!("  Actualizando {}...\n", nombre));
     } else {
-        // Unix: renombrar actual, mover nuevo
-        // Linux/macOS: el binario en ejecución no se puede reemplazar
-        // directamente. Usamos un script shell que hace el swap atómicamente.
-        let new_path = tmp_dir.join(format!("argo-new-{}", arch));
-        let old_path = tmp_dir.join(format!("argo-old-{}", arch));
-        let _ = fs::rename(&tmp_file, &new_path);
-
-        // Crear script de swap
-        let exe_str = current_exe.to_str().unwrap_or("argo");
-        let new_str = new_path.to_str().unwrap_or("");
-        let old_str = old_path.to_str().unwrap_or("");
-
-        let script = format!(
-            "#!/bin/sh\n\
-             rm -f \"{old_str}\"\n\
-             mv \"{exe_str}\" \"{old_str}\" 2>/dev/null || true\n\
-             mv \"{new_str}\" \"{exe_str}\"\n\
-             chmod +x \"{exe_str}\"\n\
-             rm -f \"{old_str}\"\n\
-             echo \"Argo actualizado exitosamente.\"\n"
-        );
-        let script_path = tmp_dir.join("argo-swap.sh");
-        let _ = fs::write(&script_path, &script);
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755));
-        }
-
-        // Ejecutar el script de swap y salir
-        println!("  {dim}│{reset} Aplicando actualización...");
-        let _ = Command::new("sh").arg(script_path.to_str().unwrap()).status();
-        std::process::exit(0);
+        output.bold("  Actualizando todas las dependencias...\n");
     }
 
-    // 7. Verificar que funciona
-    let output = Command::new(&current_exe)
-        .args(["--version"])
-        .output();
+    // Eliminar argo.lock para forzar resolución
+    let lock_path = std::path::Path::new("argo.lock");
+    if lock_path.exists() {
+        std::fs::remove_file(lock_path).ok();
+    }
 
-    match output {
-        Ok(o) if o.status.success() => {
-            let ver = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            println!("  {dim}│{reset} Nuevo binario verificado: {ver}");
+    ejecutar_install_v2();
+}
+
+// ===========================================================================
+// ejecutar_uninstall — Desinstalar un paquete
+// ===========================================================================
+fn ejecutar_uninstall(repo: &str) {
+    let output = pkg::output::Output::new();
+
+    match pkg::cache::CacheIndex::cargar() {
+        Ok(mut index) => {
+            if index.buscar(repo).is_none() {
+                output.error(&format!("Paquete '{}' no encontrado.", repo));
+                return;
+            }
+            index.eliminar(repo);
+            index.guardar().ok();
+
+            // Eliminar directorio vendor
+            let vendor_path = std::path::PathBuf::from("vendor").join(repo);
+            if vendor_path.exists() {
+                std::fs::remove_dir_all(&vendor_path).ok();
+            }
+
+            output.verde(&format!("✅ Paquete '{}' desinstalado.", repo));
+            println!();
         }
+        Err(e) => {
+            output.error(&e);
+        }
+    }
+}
+
+// ===========================================================================
+// ejecutar_config_set — Configurar un valor
+// ===========================================================================
+fn ejecutar_config_set(key: &str, value: &str) {
+    let output = pkg::output::Output::new();
+    let mut auth = pkg::multihost::AuthTokens::cargar();
+
+    let host = match key {
+        "github-token" => "github",
+        "gitlab-token" => "gitlab",
+        "bitbucket-token" => "bitbucket",
         _ => {
-            // --version no existe aún, simplemente informar
+            output.error(&format!("Clave desconocida '{}'. Claves válidas: github-token, gitlab-token, bitbucket-token", key));
+            std::process::exit(1);
+        }
+    };
+
+    auth.set_token(host, value);
+    match auth.guardar() {
+        Ok(()) => {
+            output.verde(&format!("✅ Token '{}' configurado.", key));
+            println!();
+        }
+        Err(e) => {
+            output.error(&e);
+            std::process::exit(1);
         }
     }
-
-    println!();
-    println!("  {green}✔{reset} {bold}Argo actualizado exitosamente!{reset}");
-    println!();
 }
 
 // ===========================================================================
@@ -749,7 +680,7 @@ fn main() {
     match args.len() {
         // Sin argumentos → REPL interactivo
         1 => {
-            println!("Argo v1.5.3 - Interprete Nativo");
+            println!("Argo v2.0.0 - Interprete Nativo");
             println!("Escribe 'exit' para salir.\n");
             iniciar_repl();
         }
@@ -757,7 +688,7 @@ fn main() {
         // Un argumento de usuario
         2 => match args[1].as_str() {
             "--version" | "-v" => {
-                println!("argo 1.5.3");
+                println!("argo 2.0.0");
             }
             "init" => {
                 iniciar_animacion();
@@ -767,7 +698,7 @@ fn main() {
                 ejecutar_proyecto();
             }
             "repl" => {
-                println!("Argo v1.5.3 - Interprete Nativo");
+                println!("Argo v2.0.0 - Interprete Nativo");
                 println!("Escribe 'exit' para salir.\n");
                 iniciar_repl();
             }
@@ -775,10 +706,34 @@ fn main() {
                 ejecutar_pruebas();
             }
             "install" => {
-                ejecutar_install();
+                ejecutar_install_v2();
+            }
+            "publish" => {
+                let opts = pkg::publish::PublicarOptions {
+                    verbose: false,
+                    dry_run: false,
+                };
+                if let Err(e) = pkg::publish::ejecutar_publish(opts) {
+                    eprintln!("\x1b[31mError:\x1b[0m {}", e);
+                    std::process::exit(1);
+                }
+            }
+            "list" => {
+                ejecutar_list();
+            }
+            "clean" => {
+                ejecutar_clean(false);
             }
             "update" => {
-                ejecutar_update();
+                ejecutar_update_v2(None);
+            }
+            "config" => {
+                eprintln!("\x1b[31mError:\x1b[0m Uso: argo config set <key> <value>");
+                std::process::exit(1);
+            }
+            "uninstall" => {
+                eprintln!("\x1b[31mError:\x1b[0m Uso: argo uninstall <repo>");
+                std::process::exit(1);
             }
             // Si no es un comando reservado, tratar como ruta de archivo
             _ => {
@@ -786,21 +741,71 @@ fn main() {
             }
         },
 
-        // Uso incorrecto
-        _ => {
-            println!("Uso: argo [comando|ruta]");
-            println!();
-            println!("  {b}{lg}Comandos:{r}");
-            println!("    {lg}init{r}    Inicializar un nuevo proyecto Argo");
-            println!("    {lg}run{r}     Ejecutar el proyecto actual");
-            println!("    {lg}repl{r}    Iniciar el REPL interactivo");
-            println!("    {lg}test{r}    Ejecutar pruebas (*.test.argo)");
-            println!("    {lg}install{r} Instalar dependencias desde argo.toml");
-            println!("    {lg}update{r}  Auto-actualizar Argo a la última versión");
-            println!();
-            println!("  {b}{lg}Tambien:{r}");
-            println!("    {lg}argo <archivo.argo>{r}  Ejecutar un script directamente");
-            std::process::exit(1);
+        3 => match args[1].as_str() {
+            "install" => {
+                ejecutar_install_repo(&args[2]);
+            }
+            "update" => {
+                ejecutar_update_v2(Some(&args[2]));
+            }
+            "uninstall" => {
+                ejecutar_uninstall(&args[2]);
+            }
+            "config" => {
+                eprintln!("\x1b[31mError:\x1b[0m Uso: argo config set <key> <value>");
+                std::process::exit(1);
+            }
+            "publish" => {
+                let flags: Vec<&str> = args[2].split_whitespace().collect();
+                let verbose = flags.iter().any(|f| *f == "--verbose" || *f == "-v");
+                let dry_run = flags.contains(&"--dry-run");
+                let opts = pkg::publish::PublicarOptions { verbose, dry_run };
+                if let Err(e) = pkg::publish::ejecutar_publish(opts) {
+                    eprintln!("\x1b[31mError:\x1b[0m {}", e);
+                    std::process::exit(1);
+                }
+            }
+            _ => {
+                eprintln!("\x1b[31mError:\x1b[0m Comando desconocido: {} {}", args[1], args[2]);
+                std::process::exit(1);
+            }
+        },
+
+        // 4+ argumentos
+        _ => match args[1].as_str() {
+            "config" => {
+                if args.len() >= 4 && args[2] == "set" {
+                    ejecutar_config_set(&args[3], &args[4..].join(" "));
+                } else {
+                    eprintln!("\x1b[31mError:\x1b[0m Uso: argo config set <key> <value>");
+                    std::process::exit(1);
+                }
+            }
+            "install" => {
+                ejecutar_install_repo(&args[2]);
+            }
+            _ => {
+                println!("Uso: argo [comando|ruta]");
+                println!();
+                println!("  {b}{lg}Comandos:{r}");
+                println!("    {lg}init{r}             Inicializar un nuevo proyecto Argo");
+                println!("    {lg}run{r}              Ejecutar el proyecto actual");
+                println!("    {lg}repl{r}             Iniciar el REPL interactivo");
+                println!("    {lg}test{r}             Ejecutar pruebas (*.test.argo)");
+                println!("    {lg}install{r}          Instalar dependencias desde argo.toml");
+                println!("    {lg}install <repo>{r}   Instalar un paquete desde GitHub");
+                println!("    {lg}uninstall <repo>{r} Desinstalar un paquete");
+                println!("    {lg}update{r}           Actualizar todas las dependencias");
+                println!("    {lg}update <repo>{r}    Actualizar un paquete específico");
+                println!("    {lg}list{r}             Listar paquetes instalados");
+                println!("    {lg}clean{r}            Limpiar caché de paquetes");
+                println!("    {lg}publish{r}          Publicar paquete en GitHub");
+                println!("    {lg}config set{r}       Configurar tokens de autenticación");
+                println!();
+                println!("  {b}{lg}Tambien:{r}");
+                println!("    {lg}argo <archivo.argo>{r}  Ejecutar un script directamente");
+                std::process::exit(1);
+            }
         }
     }
 }

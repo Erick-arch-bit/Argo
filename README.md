@@ -1,9 +1,9 @@
-# Argo v1.5.3
+# Argo v2.0.0
 
 Argo es un lenguaje de programación interpretado, minimalista y extensible, escrito en Rust **sin dependencias externas**.
 
 ```bash
-curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.3/install.sh | bash
+curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v2.0.0/install.sh | bash
 ```
 
 ## Características
@@ -27,7 +27,7 @@ curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v1.5.3/i
 | **GPU** | Framebuffer por software: `gpu.crear_buffer`, `.pixel`, `.linea`, `.rect`, `.circulo`, `.guardar`, `.mostrar` |
 | **TUI** | Motor de renderizado de alto rendimiento: doble buffer, dirty-rect, animaciones Lerp, ~30 FPS |
 | **Caché** | AST serializado a `.argbc` — segunda ejecución instantánea |
-| **Package manager** | `argo install` — lee `[dependencies]` de `argo.toml` |
+| **Package manager** | `argo install`, `argo update`, `argo publish`, `argo list`, `argo clean` |
 
 ## Biblioteca estándar
 
@@ -56,12 +56,19 @@ argo init             Crea un nuevo proyecto
 argo run              Ejecuta el proyecto actual
 argo test             Ejecuta pruebas (*.test.argo)
 argo install          Instala dependencias desde argo.toml
-argo update           Auto-actualiza Argo a la última versión
+argo install <repo>   Instala un paquete desde GitHub
+argo update           Actualiza todas las dependencias
+argo update <repo>    Actualiza un paquete específico
+argo publish          Publica el paquete en GitHub
+argo list             Lista paquetes instalados
+argo clean            Limpia el caché de paquetes
+argo config set       Configura tokens de autenticación
+argo uninstall        Desinstala un paquete
 argo --version        Muestra la versión actual
 ```
 
 ```rust
-print("Hola desde Argo v1.5.3");
+print("Hola desde Argo v2.0.0");
 
 // Structs y Enums
 struct Rect { x, y }
@@ -120,6 +127,46 @@ let accion = ui.ejecutar();
 if (accion == 1) {
     print("Iniciado!");
 }
+```
+
+## Package Manager
+
+### Gestión de dependencias
+
+```toml
+# argo.toml
+[package]
+name = "mi-proyecto"
+version = "1.0.0"
+description = "Mi proyecto increíble"
+
+[dependencies]
+"usuario/repo" = "*"
+"usuario/otro-repo" = "^1.2.3"
+```
+
+```bash
+argo install          # Instala todas las dependencias
+argo install usuario/repo  # Instala un paquete específico
+argo update           # Actualiza todas las dependencias
+argo update usuario/repo  # Actualiza un paquete
+argo list             # Lista paquetes instalados
+argo clean            # Limpia el caché de paquetes
+```
+
+### Publicación de paquetes
+
+```bash
+argo publish          # Valida y publica el paquete en GitHub
+argo publish --dry-run  # Solo validación, sin publicar
+```
+
+### Autenticación
+
+```bash
+argo config set github-token <tu-token>
+argo config set gitlab-token <tu-token>
+argo config set bitbucket-token <tu-token>
 ```
 
 ## Motor de renderizado TUI

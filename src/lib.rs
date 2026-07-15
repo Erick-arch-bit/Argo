@@ -5,3 +5,4 @@ pub mod evaluator;
 pub mod stdlib;
 pub mod lsp;
 pub mod ffi;
+pub mod pkg;

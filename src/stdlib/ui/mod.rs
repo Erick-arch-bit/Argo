@@ -1,3 +1,11 @@
+#![allow(
+    clippy::collapsible_if,
+    clippy::collapsible_match,
+    clippy::too_many_arguments,
+    clippy::new_without_default,
+    clippy::trim_split_whitespace
+)]
+
 pub mod animaciones;
 pub mod engine;
 pub mod widgets;

@@ -1,5 +1,40 @@
 # Changelog
 
+## v2.0.0 — 2026-07-14
+
+### Sistema de Paquetes (Package Manager)
+- **NUEVO `src/pkg/toml.rs`:** Parser TOML completo (subset) para argo.toml — soporta [package], [dependencies], strings, arrays, tablas, comentarios
+- **NUEVO `src/pkg/semver.rs`:** Parser SemVer con rangos ^, ~, exacto, *, pre-release, build metadata
+- **NUEVO `src/pkg/sha256.rs`:** SHA-256 desde cero según FIPS 180-4 — cero dependencias externas
+- **NUEVO `src/pkg/http.rs`:** Cliente HTTP/1.1 sobre TcpStream — GET/HEAD, headers, auth token, timeout
+- **NUEVO `src/pkg/lock.rs`:** Lectura/escritura de argo.lock — formato TOML-like con [[package]]
+- **NUEVO `src/pkg/cache.rs`:** Caché binario (cache.idx + cache.data) — migración automática de directorios
+- **NUEVO `src/pkg/output.rs`:** Colores, barra de progreso, detección TTY
+- **NUEVO `src/pkg/multihost.rs`:** Soporte GitHub/GitLab/Bitbucket — RepoInfo, AuthTokens, URLs
+- **NUEVO `src/pkg/resolve.rs`:** Resolución recursiva de dependencias — lockfile, fallback jsDelivr, retry
+- **NUEVO `src/pkg/publish.rs`:** Publicación con SHA-256, tag, push, validaciones
+
+### Comandos CLI
+- `argo install` — Instala dependencias desde argo.toml (resolución + lockfile)
+- `argo install <repo>` — Instala un paquete específico desde GitHub
+- `argo update` — Actualiza todas las dependencias
+- `argo update <repo>` — Actualiza un paquete específico
+- `argo publish` — Valida y publica el paquete en GitHub
+- `argo publish --dry-run` — Solo validación sin publicar
+- `argo list` — Lista paquetes instalados
+- `argo clean` — Limpia caché de paquetes (>30 días)
+- `argo config set` — Configura tokens de autenticación
+- `argo uninstall` — Desinstala un paquete
+
+### Seguridad
+- SHA-256 desde cero (FIPS 180-4) — cero dependencias externas
+- Validación de integridad en descargas
+- Verificación de remote de git contra nombre del paquete
+
+### Documentación
+- README.md actualizado con v2.0.0 y comandos del package manager
+- docs/ actualizados
+
 ## v1.5.3 — 2026-07-09
 
 ### Reescritura completa del módulo TUI

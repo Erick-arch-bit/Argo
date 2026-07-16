@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.1.0 — 2026-07-16
+
+### CLI Demo integrado en el core
+- **NUEVO `argo cli`:** Demo CLI interactiva con menú visual, spines Unicode y animaciones ANSI
+- `src/cli_demo.rs` — Módulo con 3 flujos demostrativos (instalar, actualizar, REPL simulado)
+- El binario separado `argo-cli` se eliminó; ahora es parte del binario `argo`
+
+### Correcciones
+- Funciones no usadas eliminadas de `cli_demo.rs`
+
+### Documentación
+- `docs/commands.md` actualizado con comando `argo cli`
+
 ## v2.0.0 — 2026-07-14
 
 ### Sistema de Paquetes (Package Manager)

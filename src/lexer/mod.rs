@@ -263,6 +263,31 @@ impl<'a> Iterator for Lexer<'a> {
                     Token::Resta
                 }
             },
+            '*' => {
+                if self.mirar_siguiente() == Some(&'=') {
+                    self.avanzar();
+                    Token::MultiplicacionAsignacion
+                } else {
+                    Token::Multiplicacion
+                }
+            },
+            '/' => {
+                if self.mirar_siguiente() == Some(&'=') {
+                    self.avanzar();
+                    Token::DivisionAsignacion
+                } else if self.mirar_siguiente() == Some(&'/') {
+                    // Comentario de línea: // ... hasta \n
+                    while let Some(c) = self.caracter_actual {
+                        if c == '\n' {
+                            break;
+                        }
+                        self.avanzar();
+                    }
+                    return self.next();
+                } else {
+                    Token::Division
+                }
+            },
             '<' => {
                 if self.mirar_siguiente() == Some(&'<') {
                     self.avanzar();
@@ -304,25 +329,6 @@ impl<'a> Iterator for Lexer<'a> {
                 }
             },
             '^' => Token::Circunflejo,
-            '*' => Token::Multiplicacion,
-            '/' => {
-                if self.mirar_siguiente() == Some(&'/') {
-                    // Comentario de línea: // ... hasta \n
-                    // Consumimos caracteres hasta encontrar \n o EOF.
-                    while let Some(c) = self.caracter_actual {
-                        if c == '\n' {
-                            break;
-                        }
-                        self.avanzar();
-                    }
-                    // No retornamos token, seguimos iterando.
-                    // Llamamos recursivamente a next() para que el bucle
-                    // principal del Iterator continue con el siguiente token.
-                    return self.next();
-                } else {
-                    Token::Division
-                }
-            },
             '%' => Token::Modulo,
             '{' => Token::LlaveAbierta,
             '}' => Token::LlaveCerrada,

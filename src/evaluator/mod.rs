@@ -570,7 +570,103 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
             }
         }
 
-        // Statement::DeclaracionFuncion { nombre, parametros, cuerpo } —
+        // Statement::AsignacionIndice { izquierda, indice, valor } —
+        // Asignación por índice: `arreglo[i] = valor` o `dict[clave] = valor`.
+        // 1. Evaluar la expresión izquierda (el contenedor).
+        // 2. Evaluar la expresión del índice.
+        // 3. Evaluar el valor a asignar.
+        // 4. Para simplicidad, asumimos que la izquierda es un identificador
+        //    (variable) que contiene un arreglo o diccionario.
+        Statement::AsignacionIndice { izquierda, indice, valor } => {
+            // 1. Evaluar la expresión izquierda (el contenedor)
+            let eval_izquierda = evaluar_expresion(izquierda, entorno);
+            if eval_izquierda.es_error() { return eval_izquierda }
+
+            // 2. Evaluar la expresión del índice
+            let eval_indice = evaluar_expresion(indice, entorno);
+            if eval_indice.es_error() { return eval_indice }
+
+            // 3. Evaluar el valor a asignar
+            let eval_valor = evaluar_expresion(valor, entorno);
+            if eval_valor.es_error() { return eval_valor }
+
+            // 4. La izquierda debe ser un identificador (variable) que contenga un arreglo o diccionario
+match &**izquierda {
+                Expression::Identificador(nombre) => {
+                    // Buscar la variable en el entorno y mutarla
+                    match entorno.obtener_mut(&nombre) {
+                        Some(contenedor) => {
+                            match contenedor {
+                                Objeto::Arreglo(elementos) => {
+                                    // Verificar que el índice sea un entero
+                                    if let Objeto::Entero(i) = eval_indice {
+                                        let len = elementos.len();
+                                        if i < 0 || (i as usize) >= len {
+                                            return Objeto::Error(format!(
+                                                "Índice fuera de rango: {} (longitud: {})", i, len
+                                            ), Vec::new());
+                                        }
+                                        // Actualizar el elemento
+                                        elementos[i as usize] = eval_valor.clone();
+                                        return eval_valor;
+                                    } else {
+                                        return Objeto::Error(
+                                            "El índice debe ser un entero".to_string(),
+                                            Vec::new()
+                                        );
+                                    }
+                                }
+                                Objeto::Diccionario(mapa) => {
+                                    // Para diccionarios, convertir el índice a LlaveHash
+                                    let clave = match eval_indice.obtener_llave_hash() {
+                                        Ok(k) => k,
+                                        Err(e) => return Objeto::Error(e, Vec::new()),
+                                    };
+                                    mapa.insert(clave, eval_valor.clone());
+                                    return eval_valor;
+                                }
+                                Objeto::Instancia { nombre: _, campos } => {
+                                    // Asignación a campo de struct: obj.campo = valor
+                                    if let Objeto::Cadena(campo) = &eval_indice {
+                                        if campos.contains_key(campo) {
+                                            campos.insert(campo.clone(), eval_valor.clone());
+                                            return eval_valor;
+                                        } else {
+                                            return Objeto::Error(format!(
+                                                "El struct no tiene el campo '{}'", campo
+                                            ), Vec::new());
+                                        }
+                                    } else {
+                                        return Objeto::Error(
+                                            "El índice debe ser una cadena (nombre del campo)".to_string(),
+                                            Vec::new()
+                                        );
+                                    }
+                                }
+                                _ => {
+                                    return Objeto::Error(
+                                        "El contenedor debe ser un arreglo, diccionario o struct".to_string(),
+                                        Vec::new()
+                                    );
+                                }
+                            }
+                        }
+                        None => {
+                            return Objeto::Error(
+                                format!("Variable no encontrada: {}", nombre),
+                                Vec::new()
+                            );
+                        }
+                    }
+                }
+                _ => {
+                    return Objeto::Error(
+                        "Asignación por índice solo soportada en variables directas".to_string(),
+                        Vec::new()
+                    );
+                }
+            }
+        }
         // Declaración de función: `fn foo(a, b) { ... }`.
         // 1. Clona el entorno actual para capturarlo en el closure.
         // 2. Crea un Objeto::Funcion con los parámetros, el cuerpo y
@@ -593,28 +689,30 @@ pub fn evaluar_sentencia(sentencia: &Statement, entorno: &mut Entorno) -> Objeto
             tipos_parametros: _,
             tipo_retorno: _,
         } => {
-            // 1. Capturar el entorno actual.
-            //    `entorno.clone()` copia profundamente todo el ámbito
-            //    visible en el momento de la definición. Esta copia se
-            //    mueve al Objeto::Funcion y no se modifica después.
-            //    Es una captura por valor (no por referencia), lo que
-            //    evita complejidades de lifetimes con referencias.
-            let entorno_capturado = entorno.clone();
+            let nombre_clone = nombre.clone();
 
-            // 2. Construir el objeto función.
-            let funcion = Objeto::Funcion {
+            // 1. Crear función con entorno temporal vacío y almacenarla PRIMERO
+            // para que la recursión funcione (la función se ve a sí misma).
+            let funcion_temp = Objeto::Funcion {
                 parametros: parametros.clone(),
                 cuerpo: cuerpo.clone(),
-                entorno: entorno_capturado,
-                nombre: Some(nombre.clone()),
+                entorno: Entorno::nuevo(),
+                nombre: Some(nombre_clone.clone()),
             };
+            entorno.asignar(nombre_clone.clone(), funcion_temp);
 
-            // 3. Almacenar la función en el entorno actual.
-            //    nombre.clone() clona el String del AST porque
-            //    HashMap::insert requiere ownership de la clave.
-            entorno.asignar(nombre.clone(), funcion);
+            // 2. Capturar el entorno actual (que YA contiene la función).
+            let entorno_capturado = entorno.clone();
 
-            // 4. Las declaraciones de función no producen valor.
+            // 3. Reemplazar la función con la versión que tiene el entorno capturado.
+            let funcion_final = Objeto::Funcion {
+                parametros: parametros.clone(),
+                cuerpo: (*cuerpo).clone(),
+                entorno: entorno_capturado,
+                nombre: Some(nombre_clone.clone()),
+            };
+            entorno.asignar(nombre_clone, funcion_final);
+
             Objeto::Nulo
         }
 
@@ -661,11 +759,10 @@ fn evaluar_bloque(sentencias: &[Statement], entorno: &mut Entorno) -> Objeto {
     if sentencias.is_empty() {
         return Objeto::Nulo;
     }
-    let mut entorno_bloque = Entorno::nuevo_local(entorno.clone());
     let mut resultado = Objeto::Nulo;
 
     for sentencia in sentencias {
-        resultado = evaluar_sentencia(sentencia, &mut entorno_bloque);
+        resultado = evaluar_sentencia(sentencia, entorno);
 
         match &resultado {
             Objeto::Error(_, _) | Objeto::Excepcion(_) | Objeto::Retorno(_) | Objeto::Break | Objeto::Continue => break,
@@ -916,7 +1013,11 @@ fn evaluar_sentencia_while(
 //   Retorno se propague más allá de la llamada a función: la
 //   envoltura Retorno es un mecanismo interno de propagación a
 //   través de sentencias anidadas; la llamada a función lo absorbe.
-pub fn evaluar_llamada_funcion(funcion: Objeto, argumentos: Vec<Objeto>) -> Objeto {
+pub fn evaluar_llamada_funcion(
+    funcion: Objeto,
+    argumentos: Vec<Objeto>,
+    entorno_llamador: &mut Entorno,
+) -> Objeto {
     // `funcion` se mueve al match; el brazo determina el tipo de
     // invocación: Funcion (definida por el usuario, necesita entorno)
     // o Nativa (built-in, llamada directa a fn pointer).
@@ -943,8 +1044,22 @@ pub fn evaluar_llamada_funcion(funcion: Objeto, argumentos: Vec<Objeto>) -> Obje
             let nombre_frame = nombre_funcion.clone().unwrap_or_else(|| "anon".to_string());
             PILA_TRACEBACK.with(|pila| pila.borrow_mut().push(nombre_frame.clone()));
 
-            // 3. Crear entorno de llamada con el entorno capturado como padre.
-            let mut entorno_llamada = Entorno::nuevo_local(entorno_capturado);
+            // 3. Para funciones recursivas: si la función tiene nombre,
+//    buscarla en el entorno del llamador para obtener la
+//    versión más reciente (con el entorno correcto para recursión).
+//    Si la encuentra, usamos su entorno capturado como padre.
+let entorno_para_padre = if let Some(ref nombre) = nombre_funcion {
+    if let Some(Objeto::Funcion { entorno, .. }) = entorno_llamador.obtener(nombre) {
+        entorno.clone()
+    } else {
+        entorno_capturado
+    }
+} else {
+    entorno_capturado
+};
+
+// 4. Crear entorno de llamada con el entorno capturado como padre.
+            let mut entorno_llamada = Entorno::nuevo_local(entorno_para_padre);
 
             // 4. Asignar argumentos a parámetros.
             for (param, arg) in parametros.into_iter().zip(argumentos) {
@@ -1388,6 +1503,17 @@ fn evaluar_binario(operador: &str, izquierda: Objeto, derecha: Objeto) -> Objeto
         },
 
         // ===================================================================
+        // (Nulo, Nulo) — Comparación de igualdad
+        // ===================================================================
+        (Objeto::Nulo, Objeto::Nulo) => match operador {
+            "==" => Objeto::Booleano(true),
+            "!=" => Objeto::Booleano(false),
+            _ => Objeto::Error(format!(
+                "Operación '{}' no soportada entre nulos", operador
+            ), Vec::new()),
+        },
+
+        // ===================================================================
         // Igualdad Universal — Tipos diferentes
         // ===================================================================
         // Cuando los tipos no coinciden (Entero vs Cadena, Flotante
@@ -1454,6 +1580,7 @@ fn evaluar_patron(patron: &Patron, valor: &Objeto, entorno: &mut Entorno) -> boo
             Expression::Flotante(f) => matches!(valor, Objeto::Flotante(v) if *v == *f),
             Expression::Booleano(b) => matches!(valor, Objeto::Booleano(v) if *v == *b),
             Expression::Cadena(s) => matches!(valor, Objeto::Cadena(v) if *v == *s),
+            Expression::Nulo => matches!(valor, Objeto::Nulo),
             _ => false,
         },
         Patron::Struct(nombre, campos) => {
@@ -1661,6 +1788,9 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
         // bool es Copy. `*valor` produce una copia bitwise (1 byte).
         Expression::Booleano(valor) => Objeto::Booleano(*valor),
 
+        // Expression::Nulo → Objeto::Nulo
+        Expression::Nulo => Objeto::Nulo,
+
         // Expression::Cadena(valor) → Objeto::Cadena(valor.clone())
         // `valor` es &String (referencia al String dentro del AST).
         // No podemos mover el String fuera del AST (está prestado como
@@ -1853,7 +1983,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
             //    eval_funcion (Objeto::Funcion) y argumentos_evaluados
             //    se mueven a la función (ownership transferido).
             //    evaluar_llamada_funcion retorna el Objeto resultante.
-            evaluar_llamada_funcion(eval_funcion, argumentos_evaluados)
+            evaluar_llamada_funcion(eval_funcion, argumentos_evaluados, entorno)
         }
 
         // Expression::Arreglo(elementos) — Literal de arreglo [a, b, c]
@@ -1962,6 +2092,7 @@ pub fn evaluar_expresion(expresion: &Expression, entorno: &mut Entorno) -> Objet
                 if evaluar_patron(patron, &valor, &mut entorno_match) {
                     resultado = evaluar_expresion(expr_brazo, &mut entorno_match);
                     if resultado.es_error() { return resultado }
+                    if matches!(resultado, Objeto::Retorno(_)) { return resultado }
                     break;
                 }
             }

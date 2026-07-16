@@ -20,6 +20,8 @@ use crate::lexer::Lexer;
 #[allow(dead_code)]
 pub enum Precedencia {
     Menor,           // Límite base: entrada del bucle Pratt
+    Or,              // ||
+    And,             // &&
     BitOr,           // |
     BitXor,          // ^
     BitAnd,          // &
@@ -282,6 +284,92 @@ impl<'a> Parser<'a> {
                 nombre: nombre_var,
                 valor: valor_binario,
             });
+        }
+
+        // *=: Azúcar sintáctica para `x = x * expr`
+        if self.token_siguiente == Token::MultiplicacionAsignacion {
+            let nombre_var = match self.avanzar() {
+                Token::Identificador(n) => n,
+                _ => {
+                    self.error_token_esperado("identificador para *= ");
+                    return None;
+                }
+            };
+            self.avanzar();
+            let valor = self.parsear_expresion(Precedencia::Menor)?;
+            let valor_binario = Expression::OperacionBinaria {
+                operador: Token::Multiplicacion,
+                izquierda: Box::new(Expression::Identificador(nombre_var.clone())),
+                derecha: Box::new(valor),
+            };
+            return Some(Statement::AsignacionVariable {
+                nombre: nombre_var,
+                valor: valor_binario,
+            });
+        }
+
+        // /=: Azúcar sintáctica para `x = x / expr`
+        if self.token_siguiente == Token::DivisionAsignacion {
+            let nombre_var = match self.avanzar() {
+                Token::Identificador(n) => n,
+                _ => {
+                    self.error_token_esperado("identificador para /= ");
+                    return None;
+                }
+            };
+            self.avanzar();
+            let valor = self.parsear_expresion(Precedencia::Menor)?;
+            let valor_binario = Expression::OperacionBinaria {
+                operador: Token::Division,
+                izquierda: Box::new(Expression::Identificador(nombre_var.clone())),
+                derecha: Box::new(valor),
+            };
+            return Some(Statement::AsignacionVariable {
+                nombre: nombre_var,
+                valor: valor_binario,
+            });
+        }
+
+        // Asignación por campo: `obj.campo = valor`
+        // Detectar: identificador seguido de `.` e identificador, luego `=`
+        if let Token::Identificador(_) = &self.token_actual {
+            if self.token_siguiente == Token::Punto {
+                // Parsear el acceso por punto como expresión
+                let objetivo = self.parsear_expresion(Precedencia::Menor)?;
+                // Verificar que sea un AccesoIndice (que es como se representa el acceso por punto)
+                if let Expression::AccesoIndice { izquierda, indice } = objetivo {
+                    if self.token_actual == Token::Asignacion {
+                        self.avanzar();
+                        let valor = self.parsear_expresion(Precedencia::Menor)?;
+                        return Some(Statement::AsignacionIndice {
+                            izquierda,
+                            indice,
+                            valor,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Asignación por índice: `arreglo[expr] = valor` o `dict[clave] = valor`
+        // Detectar: identificador seguido de `[`
+        if let Token::Identificador(_) = &self.token_actual {
+            if self.token_siguiente == Token::CorcheteAbierto {
+                // Parsear el acceso por índice como expresión
+                let objetivo = self.parsear_expresion(Precedencia::Menor)?;
+                // Verificar que sea un AccesoIndice y que siga un `=`
+                if let Expression::AccesoIndice { izquierda, indice } = objetivo {
+                    if self.token_actual == Token::Asignacion {
+                        self.avanzar();
+                        let valor = self.parsear_expresion(Precedencia::Menor)?;
+                        return Some(Statement::AsignacionIndice {
+                            izquierda,
+                            indice,
+                            valor,
+                        });
+                    }
+                }
+            }
         }
 
         // Si no es asignación, proceder con el match normal.
@@ -1153,6 +1241,10 @@ impl<'a> Parser<'a> {
             Token::Entero(_) => self.parsear_entero()?,
             Token::Flotante(_) => self.parsear_flotante()?,
             Token::True | Token::False => self.parsear_booleano()?,
+            Token::Null => {
+                self.avanzar();
+                Expression::Nulo
+            }
             Token::Cadena(_)          => self.parsear_cadena()?,
             Token::ParentesisAbierto => self.parsear_agrupacion()?,
             Token::CorcheteAbierto => self.parsear_arreglo()?,
@@ -2357,6 +2449,10 @@ impl<'a> Parser<'a> {
     /// ascendente (definido en el enum `Precedencia`).
     fn precedencia_actual(&self) -> Precedencia {
         match &self.token_actual {
+            // OR lógico
+            Token::Or => Precedencia::Or,
+            // AND lógico
+            Token::And => Precedencia::And,
             // Bitwise OR — precedencia más baja entre los operadores
             Token::Pipe => Precedencia::BitOr,
             // Bitwise XOR

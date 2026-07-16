@@ -25,6 +25,7 @@ const OP_IDENTIFIER: u8 = 0x04;
 const OP_ARRAY: u8 = 0x05;
 const OP_DICT: u8 = 0x06;
 const OP_LET: u8 = 0x07;
+const OP_NULL: u8 = 0x08;
 
 // ---------------------------------------------------------------------------
 // string_a_bytes / bytes_a_string — helpers para cadenas con prefijo de
@@ -77,6 +78,9 @@ pub fn ast_a_bytes(expr: &Expression) -> Vec<u8> {
         }
         Expression::Booleano(b) => {
             vec![OP_BOOL, if *b { 1 } else { 0 }]
+        }
+        Expression::Nulo => {
+            vec![OP_NULL]
         }
         Expression::Cadena(s) => {
             let mut bytes = Vec::with_capacity(9 + s.len());
@@ -178,6 +182,8 @@ pub fn bytes_a_ast(buf: &[u8], cursor: &mut usize) -> Result<Expression, String>
                 )),
             }
         }
+
+        OP_NULL => Ok(Expression::Nulo),
 
         OP_STR => {
             let s = bytes_a_string(buf, cursor)?;

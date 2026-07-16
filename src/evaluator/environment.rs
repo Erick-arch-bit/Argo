@@ -169,6 +169,15 @@ impl Entorno {
     }
 
     // -----------------------------------------------------------------------
+    // obtener_mut — Búsqueda de variable con acceso mutable
+    // -----------------------------------------------------------------------
+    // Similar a obtener, pero retorna una referencia mutable al valor.
+    // Solo busca en el almacén local (no en padres) para simplificar.
+    pub fn obtener_mut(&mut self, nombre: &str) -> Option<&mut Objeto> {
+        self.almacen.get_mut(nombre)
+    }
+
+    // -----------------------------------------------------------------------
     // Asignación de variable (inserción o actualización)
     // -----------------------------------------------------------------------
     // Inserta una nueva variable en el almacén actual o actualiza una

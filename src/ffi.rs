@@ -12,7 +12,7 @@ use crate::parser::Parser;
 /// El puntero retornado debe liberarse con `argo_free`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn argo_version() -> *mut c_char {
-    CString::new("2.0.0").unwrap().into_raw()
+    CString::new("2.1.0").unwrap().into_raw()
 }
 
 /// Evalúa código Argo y retorna el resultado como cadena C.

@@ -35,6 +35,14 @@ pub enum Statement {
     Continue,
     Expresion(Expression),
     AsignacionVariable { nombre: String, valor: Expression },
+
+    /// Asignación por índice: `arreglo[i] = valor` o `dict[clave] = valor`
+    AsignacionIndice {
+        izquierda: Box<Expression>,
+        indice: Box<Expression>,
+        valor: Expression,
+    },
+
     DeclaracionFuncion {
         nombre: String,
         parametros: Vec<String>,
@@ -74,6 +82,7 @@ pub enum Expression {
     Flotante(f64),
     Booleano(bool),
     Cadena(String),
+    Nulo,
     Identificador(String),
     OperacionBinaria {
         izquierda: Box<Expression>,

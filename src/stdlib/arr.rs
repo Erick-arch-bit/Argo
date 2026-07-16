@@ -180,7 +180,8 @@ pub fn crear_modulo() -> Objeto {
     fn llamar_con(closure: &Objeto, arg: Objeto) -> Objeto {
         match closure {
             Objeto::Funcion { .. } | Objeto::Nativa(_) => {
-                evaluar_llamada_funcion(closure.clone(), vec![arg])
+                let mut env_dummy = crate::evaluator::environment::Entorno::nuevo();
+                evaluar_llamada_funcion(closure.clone(), vec![arg], &mut env_dummy)
             }
             _ => Objeto::Error("Se esperaba una función como argumento".to_string(), Vec::new()),
         }
@@ -240,7 +241,8 @@ pub fn crear_modulo() -> Objeto {
                 for elem in &v {
                     let res = match &closure {
                         Objeto::Funcion { .. } | Objeto::Nativa(_) => {
-                            evaluar_llamada_funcion(closure.clone(), vec![acc, elem.clone()])
+                            let mut env_dummy = crate::evaluator::environment::Entorno::nuevo();
+                            evaluar_llamada_funcion(closure.clone(), vec![acc, elem.clone()], &mut env_dummy)
                         }
                         _ => return Objeto::Error("arr.reduce: se esperaba una función".to_string(), Vec::new()),
                     };

@@ -10,6 +10,7 @@ mod ast;
 mod evaluator;
 mod stdlib;
 mod pkg;
+mod cli_demo;
 
 use std::io::{self, Write};
 use std::env;
@@ -373,15 +374,15 @@ fn ejecutar_desde_str(ruta: &str, contenido: &str) -> bool {
 }
 
 // ===========================================================================
-// ejecutar_pruebas — Busca y ejecuta archivos *.test.argo, reporta resumen
+// ejecutar_pruebas — Busca y ejecuta archivos *.test.argo en tests/, reporta resumen
 // ===========================================================================
 fn ejecutar_pruebas() {
     let mut total_pasaron = 0usize;
     let mut total_fallaron = 0usize;
 
-    let dir = Path::new(".");
+    let dir = Path::new("tests");
     let Ok(entries) = fs::read_dir(dir) else {
-        println!("\x1b[91mError:\x1b[0m No se pudo leer el directorio actual.");
+        println!("\x1b[91mError:\x1b[0m No se pudo leer el directorio 'tests'.");
         return;
     };
 
@@ -719,6 +720,8 @@ fn ejecutar_config_set(key: &str, value: &str) {
 //   init  → animación + generar_proyecto()
 //   run   → ejecutar_proyecto()
 //   repl  → iniciar_repl()
+//   test  → ejecutar_pruebas()
+//   cli   → cli_demo::ejecutar_demo()
 //   <file> → ejecutar_archivo(<file>)
 //   (ninguno) → iniciar_repl()
 fn main() {
@@ -732,7 +735,7 @@ fn main() {
         // Sin argumentos → REPL interactivo
         1 => {
             mostrar_logo();
-            println!("Argo v2.0.0 - Interprete Nativo");
+            println!("Argo v2.1.0 - Interprete Nativo");
             println!("Escribe 'exit' para salir.\n");
             iniciar_repl();
         }
@@ -741,7 +744,7 @@ fn main() {
         2 => match args[1].as_str() {
             "--version" | "-v" => {
                 mostrar_logo();
-                println!("argo 2.0.0");
+                println!("argo 2.1.0");
             }
             "init" => {
                 mostrar_logo();
@@ -753,12 +756,15 @@ fn main() {
             }
             "repl" => {
                 mostrar_logo();
-                println!("Argo v2.0.0 - Interprete Nativo");
+                println!("Argo v2.1.0 - Interprete Nativo");
                 println!("Escribe 'exit' para salir.\n");
                 iniciar_repl();
             }
             "test" => {
                 ejecutar_pruebas();
+            }
+            "cli" => {
+                cli_demo::ejecutar_demo();
             }
             "install" => {
                 ejecutar_install_v2();
@@ -847,6 +853,7 @@ fn main() {
                 println!("    {lg}run{r}              Ejecutar el proyecto actual");
                 println!("    {lg}repl{r}             Iniciar el REPL interactivo");
                 println!("    {lg}test{r}             Ejecutar pruebas (*.test.argo)");
+                println!("    {lg}cli{r}              Demo CLI interactiva con animaciones");
                 println!("    {lg}install{r}          Instalar dependencias desde argo.toml");
                 println!("    {lg}install <repo>{r}   Instalar un paquete desde GitHub");
                 println!("    {lg}uninstall <repo>{r} Desinstalar un paquete");

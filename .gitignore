@@ -1,2 +1,35 @@
-/target
-.rust-analyzer.toml
+# Rust
+target/
+*.rs.bk
+Cargo.lock
+
+# Tests (no subir a repo)
+tests/
+*.test.argo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.bin
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+tmp/

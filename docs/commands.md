@@ -34,6 +34,22 @@ Inicia el REPL interactivo.
 
 ---
 
+## Demo CLI
+
+### `argo cli`
+
+Inicia la demo CLI interactiva con menú visual, animaciones ANSI y spines Unicode. Incluye tres flujos demostrativos:
+
+1. **Instalar Argo** — Simula instalación del core del lenguaje con barras de progreso
+2. **Actualizar compilador** — Simula actualización desde GitHub
+3. **Iniciar REPL** — Simula carga de módulos y entorno global
+
+```bash
+argo cli
+```
+
+---
+
 ## Testing
 
 ### `argo test`
@@ -163,5 +179,5 @@ Muestra la versión actual.
 
 ```bash
 argo --version
-# argo 2.0.0
+# argo 2.1.0
 ```

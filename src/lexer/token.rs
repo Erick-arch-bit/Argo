@@ -46,9 +46,11 @@ pub enum Token {
     Modulo,         // %
 
     // --- Operadores de Asignación ---
-    Asignacion,     // =
-    SumaAsignacion, // +=
-    RestaAsignacion,// -=
+    Asignacion,           // =
+    SumaAsignacion,       // +=
+    RestaAsignacion,      // -=
+    MultiplicacionAsignacion, // *=
+    DivisionAsignacion,   // /=
 
     // --- Operadores de Comparación y Lógicos ---
     Igual,          // ==

@@ -1,5 +1,26 @@
 # Changelog
 
+## v2.2.0 — 2026-08-13
+
+### Lexer
+- **Comentarios multilínea `/* */`:** ignorados por completo, planos (sin anidar), con `Ilegal('*')` descriptivo si el cierre falta al EOF
+- **Interpolación de cadenas:** `"Hola {nombre}"` se tokeniza como `Cadena("Hola "), Identificador("nombre")` — el parser ensambla la concatenación
+- Escapes `\{` y `\}`: llaves literales que NO inician interpolación
+- Balanceo de llaves anidadas dentro de la expresión interpolada (`"r: {objeto.calcular()}"`)
+
+### Parser
+- **Operador pipe `|>`:** `nums |> map(fn)` ≡ `map(nums, fn)` — precedencia mínima entre los operadores infijos (por debajo de `||`), reutiliza `Expression::Llamada`
+- **Sintaxis de método `expr.metodo(args)`:** ≡ `metodo(expr, args)` — con excepción para funciones de módulo de la stdlib (`arr.map(...)`, `math.sin(...)`) que conservan su forma de llamada de módulo
+- Fix: expresiones con punto/índice como sentencias sueltas ya no se descartan (`obj.metodo(...);`, `punto.x;`)
+
+### CLI
+- Nuevos comandos `argo login` y `argo publish` reorganizados en `src/cmd/`
+- Sistema de paquetes inmutables en `src/paquetes/`
+- `src/cli_demo.rs` con `#![allow(dead_code)]` — build limpio sin warnings
+
+### Documentación
+- README, docs/ y SECURITY.md actualizados a v2.2.0
+
 ## v2.1.0 — 2026-07-16
 
 ### CLI Demo integrado en el core

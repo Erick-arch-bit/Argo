@@ -1,6 +1,6 @@
 # Argo — Referencia Completa del Lenguaje
 
-Versión 2.1.0 — Todo lo que necesita saber sobre el lenguaje Argo.
+Versión 2.2.0 — Todo lo que necesita saber sobre el lenguaje Argo.
 
 ---
 

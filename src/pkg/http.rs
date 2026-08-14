@@ -76,7 +76,7 @@ impl PeticionHttp {
         // Construir request HTTP/1.1
         let mut request = format!("{} {} HTTP/1.1\r\n", self.metodo, self.ruta);
         request.push_str(&format!("Host: {}\r\n", self.host));
-        request.push_str("User-Agent: argo-cli/2.1.0\r\n");
+        request.push_str("User-Agent: argo-cli/2.2.0\r\n");
         request.push_str("Accept: application/json\r\n");
         request.push_str("Connection: close\r\n");
 

@@ -453,7 +453,7 @@ print(persona.edad);    // 25
 // Stringificar
 let objeto = {
     "nombre": "Argo",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "features": ["fast", "safe"]
 };
 let json_salida = json.stringificar(objeto);
@@ -633,7 +633,7 @@ let root = ui.columna(0, 1);
 
 ui.texto(root, "Mi Aplicación TUI", { "grande": true });
 ui.separador(root);
-ui.texto(root, "Bienvenido a Argo v2.1.0");
+ui.texto(root, "Bienvenido a Argo v2.2.0");
 
 let btn_iniciar = ui.boton(root, " Iniciar ", { "callback": 1 });
 let btn_salir = ui.boton(root, " Salir ", { "callback": 2 });

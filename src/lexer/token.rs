@@ -70,6 +70,9 @@ pub enum Token {
     DesplazamientoIzq,  // <<
     DesplazamientoDer,  // >>
 
+    // --- Operador Pipe (Tubería) ---
+    PipeDoble,          // |>
+
     // --- Símbolos y Estructuras ---
     Punto,               // .
     Coma,                // ,

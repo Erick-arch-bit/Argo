@@ -6,3 +6,4 @@ pub mod stdlib;
 pub mod lsp;
 pub mod ffi;
 pub mod pkg;
+pub mod paquetes;

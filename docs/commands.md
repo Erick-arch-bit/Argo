@@ -179,5 +179,5 @@ Muestra la versión actual.
 
 ```bash
 argo --version
-# argo 2.1.0
+# argo 2.2.0
 ```

@@ -17,8 +17,8 @@ Cada release de Argo publica binarios precompilados para Linux, macOS y Windows,
 
 ```bash
 # Descargar el binario y su checksum
-curl -sSLO https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v2.1.0/argo-linux-amd64
-curl -sSLO https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v2.1.0/argo-linux-amd64.sha256
+curl -sSLO https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v2.2.0/argo-linux-amd64
+curl -sSLO https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v2.2.0/argo-linux-amd64.sha256
 
 # Verificar (Linux)
 sha256sum -c argo-linux-amd64.sha256

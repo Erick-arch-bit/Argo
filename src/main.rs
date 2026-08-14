@@ -10,6 +10,8 @@ mod ast;
 mod evaluator;
 mod stdlib;
 mod pkg;
+mod paquetes;
+mod cmd;
 mod cli_demo;
 
 use std::io::{self, Write};
@@ -735,7 +737,7 @@ fn main() {
         // Sin argumentos → REPL interactivo
         1 => {
             mostrar_logo();
-            println!("Argo v2.1.0 - Interprete Nativo");
+            println!("Argo v2.2.0 - Interprete Nativo");
             println!("Escribe 'exit' para salir.\n");
             iniciar_repl();
         }
@@ -744,7 +746,7 @@ fn main() {
         2 => match args[1].as_str() {
             "--version" | "-v" => {
                 mostrar_logo();
-                println!("argo 2.1.0");
+                println!("argo 2.2.0");
             }
             "init" => {
                 mostrar_logo();
@@ -756,7 +758,7 @@ fn main() {
             }
             "repl" => {
                 mostrar_logo();
-                println!("Argo v2.1.0 - Interprete Nativo");
+                println!("Argo v2.2.0 - Interprete Nativo");
                 println!("Escribe 'exit' para salir.\n");
                 iniciar_repl();
             }
@@ -769,12 +771,18 @@ fn main() {
             "install" => {
                 ejecutar_install_v2();
             }
+            "login" => {
+                if let Err(e) = cmd::login::ejecutar_login() {
+                    eprintln!("\x1b[31mError:\x1b[0m {}", e);
+                    std::process::exit(1);
+                }
+            }
             "publish" => {
-                let opts = pkg::publish::PublicarOptions {
+                let opts = cmd::publish::PublicarOptions {
                     verbose: false,
                     dry_run: false,
                 };
-                if let Err(e) = pkg::publish::ejecutar_publish(opts) {
+                if let Err(e) = cmd::publish::ejecutar_publish(opts) {
                     eprintln!("\x1b[31mError:\x1b[0m {}", e);
                     std::process::exit(1);
                 }
@@ -820,8 +828,8 @@ fn main() {
                 let flags: Vec<&str> = args[2].split_whitespace().collect();
                 let verbose = flags.iter().any(|f| *f == "--verbose" || *f == "-v");
                 let dry_run = flags.contains(&"--dry-run");
-                let opts = pkg::publish::PublicarOptions { verbose, dry_run };
-                if let Err(e) = pkg::publish::ejecutar_publish(opts) {
+                let opts = cmd::publish::PublicarOptions { verbose, dry_run };
+                if let Err(e) = cmd::publish::ejecutar_publish(opts) {
                     eprintln!("\x1b[31mError:\x1b[0m {}", e);
                     std::process::exit(1);
                 }
@@ -845,6 +853,15 @@ fn main() {
             "install" => {
                 ejecutar_install_repo(&args[2]);
             }
+            "publish" => {
+                let verbose = args[2..].iter().any(|f| f == "--verbose" || f == "-v");
+                let dry_run = args[2..].iter().any(|f| f == "--dry-run");
+                let opts = cmd::publish::PublicarOptions { verbose, dry_run };
+                if let Err(e) = cmd::publish::ejecutar_publish(opts) {
+                    eprintln!("\x1b[31mError:\x1b[0m {}", e);
+                    std::process::exit(1);
+                }
+            }
             _ => {
                 println!("Uso: argo [comando|ruta]");
                 println!();
@@ -856,12 +873,13 @@ fn main() {
                 println!("    {lg}cli{r}              Demo CLI interactiva con animaciones");
                 println!("    {lg}install{r}          Instalar dependencias desde argo.toml");
                 println!("    {lg}install <repo>{r}   Instalar un paquete desde GitHub");
+                println!("    {lg}login{r}            Generar la identidad de desarrollador (llaves Ed25519)");
                 println!("    {lg}uninstall <repo>{r} Desinstalar un paquete");
                 println!("    {lg}update{r}           Actualizar todas las dependencias");
                 println!("    {lg}update <repo>{r}    Actualizar un paquete específico");
                 println!("    {lg}list{r}             Listar paquetes instalados");
                 println!("    {lg}clean{r}            Limpiar caché de paquetes");
-                println!("    {lg}publish{r}          Publicar paquete en GitHub");
+                println!("    {lg}publish{r}          Empacar, firmar y registrar el paquete actual");
                 println!("    {lg}config set{r}       Configurar tokens de autenticación");
                 println!();
                 println!("  {b}{lg}Tambien:{r}");

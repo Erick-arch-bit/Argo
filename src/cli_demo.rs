@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::io::{self, Write, stdout};
 use std::thread;
 use std::time::Duration;
@@ -113,7 +115,7 @@ fn print_progress(_msg: &str, percent: u32, width: usize) {
 fn install_argo() {
     println!();
 
-    print_start("Iniciando instalación de Argo v2.1.0");
+    print_start("Iniciando instalación de Argo v2.2.0");
 
     spinner_pipe("Conectando a GitHub...", 12, 80);
     print_pipe(NODE_TASK, "Repositorio: Erick-arch-bit/Argo-Lang", DIM);
@@ -133,7 +135,7 @@ fn install_argo() {
 
     println!();
 
-    print_end("Argo v2.1.0 instalado exitosamente");
+    print_end("Argo v2.2.0 instalado exitosamente");
 
     println!();
     print_colored(DIM, "Ejecuta `argo` para iniciar el REPL");
@@ -151,7 +153,7 @@ fn update_compiler() {
     print_pipe(NODE_TASK, "Versión instalada: v1.5.3", ORANGE);
 
     spinner_pipe("Conectando a GitHub API...", 10, 80);
-    print_pipe(NODE_TASK, "Última versión: v2.1.0", GREEN);
+    print_pipe(NODE_TASK, "Última versión: v2.2.0", GREEN);
 
     spinner_task("Descargando argo-linux-amd64 (8.2 MB)...", 20, 50);
     print_progress("Descargando", 100, 30);
@@ -164,11 +166,11 @@ fn update_compiler() {
     print_pipe(NODE_TASK, "Backup: /usr/local/bin/argo.bak", DIM);
 
     spinner_task("Reemplazando binario...", 5, 150);
-    print_pipe(NODE_TASK, "/usr/local/bin/argo → v2.1.0", GREEN);
+    print_pipe(NODE_TASK, "/usr/local/bin/argo → v2.2.0", GREEN);
 
     println!();
 
-    print_end("Compilador actualizado de v1.5.3 a v2.1.0");
+    print_end("Compilador actualizado de v1.5.3 a v2.2.0");
 
     println!();
     print_colored(DIM, "Reinicia tu terminal para usar la nueva versión");
@@ -179,7 +181,7 @@ fn update_compiler() {
 fn init_repl() {
     println!();
 
-    print_start("Iniciando Argo REPL v2.1.0");
+    print_start("Iniciando Argo REPL v2.2.0");
 
     spinner_pipe("Cargando caché de módulos...", 10, 70);
     print_pipe(NODE_TASK, "~/.argo/cache/ → 12 módulos cargados", DIM);
@@ -203,7 +205,7 @@ fn init_repl() {
 
     println!();
 
-    print!("{}  {}{}{}Argo v2.1.0{} — Escribe '{}exit{}' para salir\n", BLUE, NODE_START, R, BOLD, R, CYAN, R);
+    print!("{}  {}{}{}Argo v2.2.0{} — Escribe '{}exit{}' para salir\n", BLUE, NODE_START, R, BOLD, R, CYAN, R);
     print!("{}{}{} ", BLUE, NODE_START, R);
     flush();
 
@@ -258,7 +260,7 @@ pub fn ejecutar_demo() {
     println!("{}██╔══██║██╔══██╗██║   ██║██║   ██║    ██║     ██╔══██║██║╚██╗██║██║   ██║ {}", BLUE, R);
     println!("{}██║  ██║██║  ██║╚██████╔╝╚██████╔╝    ███████╗██║  ██║██║ ╚████║╚██████╔╝ {}", BLUE, R);
     println!("{}╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝     ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝  {}", BLUE, R);
-    println!("{}{}{}ARGO LANG v2.1.0{} — Lenguaje de programación interpretado\n", DIM, PIPE_PAD, CYAN, R);
+    println!("{}{}{}ARGO LANG v2.2.0{} — Lenguaje de programación interpretado\n", DIM, PIPE_PAD, CYAN, R);
 
     loop {
         print_menu();

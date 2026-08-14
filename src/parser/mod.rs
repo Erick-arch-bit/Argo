@@ -20,6 +20,7 @@ use crate::lexer::Lexer;
 #[allow(dead_code)]
 pub enum Precedencia {
     Menor,           // Límite base: entrada del bucle Pratt
+    Pipe,            // |>
     Or,              // ||
     And,             // &&
     BitOr,           // |
@@ -334,11 +335,12 @@ impl<'a> Parser<'a> {
         // Detectar: identificador seguido de `.` e identificador, luego `=`
         if let Token::Identificador(_) = &self.token_actual {
             if self.token_siguiente == Token::Punto {
-                // Parsear el acceso por punto como expresión
+                // Parsear el acceso por punto (campo o método) como expresión.
                 let objetivo = self.parsear_expresion(Precedencia::Menor)?;
-                // Verificar que sea un AccesoIndice (que es como se representa el acceso por punto)
-                if let Expression::AccesoIndice { izquierda, indice } = objetivo {
-                    if self.token_actual == Token::Asignacion {
+                if self.token_actual == Token::Asignacion {
+                    // Verificar que sea un AccesoIndice (que es como se
+                    // representa el acceso por campo).
+                    if let Expression::AccesoIndice { izquierda, indice } = objetivo {
                         self.avanzar();
                         let valor = self.parsear_expresion(Precedencia::Menor)?;
                         return Some(Statement::AsignacionIndice {
@@ -348,6 +350,9 @@ impl<'a> Parser<'a> {
                         });
                     }
                 }
+                // No hay `=`: la expresión con punto (campo o método) se usa
+                // como sentencia. Antes se descartaba silenciosamente.
+                return Some(Statement::Expresion(objetivo));
             }
         }
 
@@ -357,9 +362,9 @@ impl<'a> Parser<'a> {
             if self.token_siguiente == Token::CorcheteAbierto {
                 // Parsear el acceso por índice como expresión
                 let objetivo = self.parsear_expresion(Precedencia::Menor)?;
-                // Verificar que sea un AccesoIndice y que siga un `=`
-                if let Expression::AccesoIndice { izquierda, indice } = objetivo {
-                    if self.token_actual == Token::Asignacion {
+                if self.token_actual == Token::Asignacion {
+                    // Verificar que sea un AccesoIndice y que siga un `=`
+                    if let Expression::AccesoIndice { izquierda, indice } = objetivo {
                         self.avanzar();
                         let valor = self.parsear_expresion(Precedencia::Menor)?;
                         return Some(Statement::AsignacionIndice {
@@ -369,6 +374,9 @@ impl<'a> Parser<'a> {
                         });
                     }
                 }
+                // No hay `=`: la expresión con índice se usa como sentencia.
+                // Antes se descartaba silenciosamente.
+                return Some(Statement::Expresion(objetivo));
             }
         }
 
@@ -1908,6 +1916,12 @@ impl<'a> Parser<'a> {
             return self.parsear_acceso_punto(izquierda);
         }
 
+        // Si el token actual es `|>`, es el operador pipe (tubería):
+        // `expr |>` nombre(resto_args) ≡ nombre(expr, resto_args).
+        if self.token_actual == Token::PipeDoble {
+            return self.parsear_pipe(izquierda);
+        }
+
         let prec = self.precedencia_actual();
         let operador = self.avanzar();
         // Parsear la expresión derecha con la precedencia del operador
@@ -1984,6 +1998,64 @@ impl<'a> Parser<'a> {
             funcion: Box::new(funcion),
             argumentos,
         })
+    }
+
+    // -----------------------------------------------------------------------
+    // parsear_pipe — Parsea el operador pipe: `expr |> nombre(resto_args)`
+    // -----------------------------------------------------------------------
+    //
+    // Azúcar sintáctico que transforma una expresión en el PRIMER argumento
+    // de la llamada del lado derecho:
+    //
+    //   nums |> map(fn(x){x*2})   ≡   map(nums, fn(x){x*2})
+    //   5    |> doble()           ≡   doble(5)
+    //   5    |> doble             ≡   doble(5)
+    //
+    // # Precondición
+    // Al entrar, `token_actual` es `PipeDoble` e `izquierda` es la expresión
+    // ya parseada que será el primer argumento.
+    //
+    // # Flujo
+    //   1. Consume el `|>` con `self.avanzar()`.
+    //   2. Parsea el lado derecho con `Precedencia::Pipe`, la precedencia
+    //      más baja de todos los operadores infijos. Esto asegura que en
+    //      `a |> b + c` el lado derecho agrupe completo: `a |> (b + c)`.
+    //   3. Si el lado derecho es una Llamada, se reutiliza su `funcion` y se
+    //      PREPONE la izquierda a sus argumentos (sin crear un nodo nuevo).
+    //   4. Si el lado derecho es un Identificador u otra expresión (sin
+    //      llamada), se envuelve en una Llamada con la izquierda como único
+    //      argumento.
+    //   5. En ambos casos se reutiliza `Expression::Llamada`, sin agregar
+    //      nodos nuevos al AST.
+    //
+    // # Gestión de memoria
+    // - `derecha` se recibe por ownership (move). Si es una Llamada, se
+    //   desestructura: `funcion` y `argumentos` se mueven al nuevo nodo sin
+    //   clonar; `izquierda` se mueve como primer argumento.
+    // - En el caso sin llamada, `Box::new(otra)` coloca la expresión en heap
+    //   como función a invocar.
+    fn parsear_pipe(&mut self, izquierda: Expression) -> Option<Expression> {
+        // Consumir el `|>`.
+        self.avanzar();
+
+        // Parsear el lado derecho con la precedencia mínima del pipe.
+        // `?` propaga None si la expresión derecha falla.
+        let derecha = self.parsear_expresion(Precedencia::Pipe)?;
+
+        match derecha {
+            // Lado derecho como llamada: `lhs |> f(a, b)` ≡ `f(lhs, a, b)`.
+            Expression::Llamada { funcion, argumentos } => {
+                let mut args = Vec::with_capacity(argumentos.len() + 1);
+                args.push(izquierda);
+                args.extend(argumentos);
+                Some(Expression::Llamada { funcion, argumentos: args })
+            }
+            // Lado derecho sin llamada: `lhs |> f` ≡ `f(lhs)`.
+            otra => Some(Expression::Llamada {
+                funcion: Box::new(otra),
+                argumentos: vec![izquierda],
+            }),
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -2083,11 +2155,40 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Nombres de los módulos de la biblioteca estándar registrados por
+    /// `stdlib::registrar_modulos` (src/stdlib/mod.rs). El acceso a función
+    /// de módulo `modulo.funcion(args)` (ej. `arr.map(lista, fn)`) es sintaxis
+    /// documentada y NO debe confundirse con una llamada de método: en ese
+    /// caso `modulo` es el diccionario del módulo y `funcion` se busca dentro
+    /// de él, sin prepender `modulo` como argumento.
+    fn es_identificador_modulo(nombre: &str) -> bool {
+        matches!(
+            nombre,
+            "math" | "fs" | "net" | "json" | "time" | "os" | "str" | "arr" | "buffer" | "thread" | "gpu" | "ui"
+        )
+    }
+
     // -----------------------------------------------------------------------
-    // parsear_acceso_punto — Parsea acceso por punto: `expr.propiedad`
+    // parsear_acceso_punto — Parsea `expr.propiedad` o `expr.metodo(args)`
     // -----------------------------------------------------------------------
     //
-    // Azúcar sintáctico que transforma `expr.identificador` en el nodo de
+    // # Azúcar sintáctico — Llamada de método
+    // Si después del identificador viene `(`, la construcción NO es un acceso
+    // a campo sino una llamada de método: `expr.metodo(args)` se transforma en
+    // `Expression::Llamada { funcion: Identificador("metodo"), argumentos: [expr, ...args] }`,
+    // donde `expr` se convierte en el primer argumento. Ejemplo:
+    //
+    //   nums.map(fn(x){x*2})   ≡   map(nums, fn(x){x*2})
+    //
+    // EXCEPCIÓN — Funciones de módulo: si `expr` es un identificador que
+    // coincide con un módulo de la stdlib (arr, math, str, ...), el acceso
+    // `.funcion(` NO es método: se mantiene como AccesoIndice para que el
+    // evaluador busque `funcion` dentro del diccionario del módulo. Así,
+    // `arr.map([1,2,3], fn)` y `[1,2,3].map(fn)` siguen siendo equivalentes
+    // (ambos invocan `map` con el arreglo como primer argumento).
+    //
+    // # Azúcar sintáctico — Acceso a campo
+    // Sin paréntesis, `expr.identificador` se transforma en el nodo de
     // acceso por índice ya existente: `expr["identificador"]`. Esto delega
     // toda la responsabilidad de evaluación (incluyendo búsqueda en
     // diccionarios, verificación de tipos, y error handling) al bloque
@@ -2096,48 +2197,103 @@ impl<'a> Parser<'a> {
     //
     // # Precondición
     // Al entrar, `token_actual` es `Punto` e `izquierda` es la expresión
-    // que se está indexando (ej. un identificador de diccionario).
+    // que se está indexando o sobre la que se invoca el método (ej. un
+    // identificador de arreglo o diccionario).
     //
     // # Flujo
     //   1. Consume el `.` con `self.avanzar()`.
     //   2. El siguiente token DEBE ser un Identificador. Si no lo es,
     //      registra un error y retorna None.
-    //   3. Extrae el nombre del identificador (String), lo clona, y
-    //      consume el token con `self.avanzar()`.
-    //   4. Construye y retorna `Expression::AccesoIndice` con la izquierda
-    //      original como contenedor y `Expression::Cadena(nombre)` como
-    //      índice. La Cadena se convierte en `Objeto::Cadena` durante la
+    //   3. Extrae el nombre del identificador y consume el token con
+    //      `self.avanzar()`.
+    //   4. Si el token actual es `(` y `izquierda` no es un módulo de la
+    //      stdlib, parsea la lista de argumentos como una llamada normal y
+    //      construye `Expression::Llamada` con el `expr` original como
+    //      primer argumento.
+    //   5. En caso contrario, construye `Expression::AccesoIndice` con la
+    //      izquierda original como contenedor y `Expression::Cadena(nombre)`
+    //      como índice. La Cadena se convierte en `Objeto::Cadena` durante la
     //      evaluación, y luego en `LlaveHash::Cadena` para la búsqueda
     //      en el HashMap del diccionario.
     //
     // # Gestión de memoria
-    // `nombre.clone()` crea una copia heap del String del identificador.
-    // Es necesaria porque `self.avanzar()` muta el parser, invalidando
-    // la referencia prestada al interior del Token. El String clonado se
-    // mueve primero a `Expression::Cadena` y luego a `Box::new(...)`
-    // dentro del `AccesoIndice`.
+    // `nombre_propiedad` se mueve del Token (consumido por avanzar) sin clonar:
+    // pasa directamente a `Expression::Cadena` o `Expression::Identificador`.
     fn parsear_acceso_punto(&mut self, izquierda: Expression) -> Option<Expression> {
         // Consumir el `.`.
         self.avanzar();
 
-        // El token siguiente debe ser un identificador (nombre de propiedad).
-        // Si no lo es, se registra un error y se aborta.
-        match self.avanzar() {
-            Token::Identificador(nombre_propiedad) => {
-                Some(Expression::AccesoIndice {
-                    izquierda: Box::new(izquierda),
-                    indice: Box::new(Expression::Cadena(nombre_propiedad)),
-                })
-            }
+        // El token siguiente debe ser un identificador (nombre de propiedad
+        // o nombre de método). Si no lo es, se registra un error y se aborta.
+        let nombre_propiedad = match self.avanzar() {
+            Token::Identificador(nombre_propiedad) => nombre_propiedad,
             _ => {
                 self.errores.push(self.error_ubicacion(
                     "Error de sintaxis: se esperaba un nombre de propiedad \
-                     después del '.'"
+                     o método después del '.'"
                         .to_string(),
                 ));
-                None
+                return None;
             }
+        };
+
+        // Excepción de módulo: `arr.map(...)`, `math.sin(...)`, etc. NO son
+        // llamadas de método. Se detecta si la izquierda es un Identificador
+        // con nombre de módulo de la stdlib.
+        let es_modulo = matches!(
+            &izquierda,
+            Expression::Identificador(n) if Self::es_identificador_modulo(n)
+        );
+
+        // Si el token actual es `(`, es una llamada de método:
+        // `expr.metodo(args)` ≡ `metodo(expr, args)`.
+        if self.token_actual == Token::ParentesisAbierto && !es_modulo {
+            // Consumir el `(`.
+            self.avanzar();
+
+            let mut argumentos = Vec::with_capacity(4);
+            if self.token_actual != Token::ParentesisCerrado {
+                loop {
+                    let arg = self.parsear_expresion(Precedencia::Menor)?;
+                    argumentos.push(arg);
+
+                    if self.token_actual == Token::Coma {
+                        self.avanzar();
+                        if self.token_actual == Token::ParentesisCerrado {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            if self.token_actual != Token::ParentesisCerrado {
+                let mensaje = "Error de sintaxis: se esperaba ')' o ',' en la \
+                               lista de argumentos del método"
+                    .to_string();
+                self.errores.push(self.error_ubicacion(mensaje));
+                return None;
+            }
+            self.avanzar();
+
+            // `expr` original se convierte en el PRIMER argumento del método.
+            let mut args = Vec::with_capacity(argumentos.len() + 1);
+            args.push(izquierda);
+            args.extend(argumentos);
+
+            return Some(Expression::Llamada {
+                funcion: Box::new(Expression::Identificador(nombre_propiedad)),
+                argumentos: args,
+            });
         }
+
+        // Sin paréntesis (o módulo de stdlib): acceso a campo
+        // `expr.campo` ≡ `expr["campo"]`.
+        Some(Expression::AccesoIndice {
+            izquierda: Box::new(izquierda),
+            indice: Box::new(Expression::Cadena(nombre_propiedad)),
+        })
     }
 
     // -----------------------------------------------------------------------
@@ -2449,6 +2605,9 @@ impl<'a> Parser<'a> {
     /// ascendente (definido en el enum `Precedencia`).
     fn precedencia_actual(&self) -> Precedencia {
         match &self.token_actual {
+            // Operador pipe (tubería) — la precedencia más baja entre los
+            // operadores infijos, solo por encima de la entrada Menor.
+            Token::PipeDoble => Precedencia::Pipe,
             // OR lógico
             Token::Or => Precedencia::Or,
             // AND lógico
@@ -2521,5 +2680,239 @@ impl<'a> Parser<'a> {
             self.siguiente_linea, col,
             esperado, self.token_siguiente
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parsear(texto: &str) -> Programa {
+        let mut parser = Parser::nuevo(Lexer::nuevo(texto));
+        let programa = parser.parsear_programa();
+        assert!(
+            parser.errores.is_empty(),
+            "errores inesperados: {:?}",
+            parser.errores
+        );
+        programa
+    }
+
+    fn sentencia_unica(programa: Programa) -> Statement {
+        assert_eq!(programa.sentencias.len(), 1);
+        programa.sentencias.into_iter().next().unwrap()
+    }
+
+    #[test]
+    fn pipe_sin_argumentos_equivale_a_llamada() {
+        // `5 |> doble()` → `doble(5)`
+        let stmt = sentencia_unica(parsear("5 |> doble();"));
+        match stmt {
+            Statement::Expresion(Expression::Llamada { funcion, argumentos }) => {
+                assert!(matches!(&*funcion, Expression::Identificador(n) if n == "doble"));
+                assert_eq!(argumentos.len(), 1);
+                assert!(matches!(&argumentos[0], Expression::Entero(5)));
+            }
+            _ => panic!("se esperaba Expresion(Llamada), se obtuvo {stmt:?}"),
+        }
+    }
+
+    #[test]
+    fn pipe_prepone_el_izquierdo_a_los_argumentos() {
+        // `nums |> map(fn(x){x*2})` → `map(nums, fn(x){x*2})`
+        let stmt = sentencia_unica(parsear("nums |> map(fn(x){x*2});"));
+        match stmt {
+            Statement::Expresion(Expression::Llamada { funcion, argumentos }) => {
+                assert!(matches!(&*funcion, Expression::Identificador(n) if n == "map"));
+                assert_eq!(argumentos.len(), 2);
+                assert!(matches!(&argumentos[0], Expression::Identificador(n) if n == "nums"));
+                assert!(matches!(&argumentos[1], Expression::Funcion { .. }));
+            }
+            _ => panic!("se esperaba Expresion(Llamada), se obtuvo {stmt:?}"),
+        }
+    }
+
+    #[test]
+    fn pipe_sin_llamada_envuelve_el_identificador() {
+        // `5 |> doble` → `doble(5)`
+        let stmt = sentencia_unica(parsear("5 |> doble;"));
+        match stmt {
+            Statement::Expresion(Expression::Llamada { funcion, argumentos }) => {
+                assert!(matches!(&*funcion, Expression::Identificador(n) if n == "doble"));
+                assert_eq!(argumentos.len(), 1);
+                assert!(matches!(&argumentos[0], Expression::Entero(5)));
+            }
+            _ => panic!("se esperaba Expresion(Llamada), se obtuvo {stmt:?}"),
+        }
+    }
+
+    #[test]
+    fn pipe_se_encadena_a_la_izquierda() {
+        // `a |> f() |> g()` → `g(f(a))`
+        let stmt = sentencia_unica(parsear("a |> f() |> g();"));
+        match stmt {
+            Statement::Expresion(Expression::Llamada { funcion, argumentos }) => {
+                assert!(matches!(&*funcion, Expression::Identificador(n) if n == "g"));
+                assert_eq!(argumentos.len(), 1);
+                match &argumentos[0] {
+                    Expression::Llamada { funcion, argumentos } => {
+                        assert!(matches!(&**funcion, Expression::Identificador(n) if n == "f"));
+                        assert_eq!(argumentos.len(), 1);
+                        assert!(matches!(&argumentos[0], Expression::Identificador(n) if n == "a"));
+                    }
+                    _ => panic!("se esperaba la llamada anidada f(a)"),
+                }
+            }
+            _ => panic!("se esperaba Expresion(Llamada), se obtuvo {stmt:?}"),
+        }
+    }
+
+    #[test]
+    fn pipe_agrupa_el_lado_derecho_con_mayor_precedencia() {
+        // `a |> b + c` se agrupa como `a |> (b + c)`, NO como `(a |> b) + c`
+        let stmt = sentencia_unica(parsear("a |> b + c;"));
+        match stmt {
+            Statement::Expresion(Expression::Llamada { funcion, argumentos }) => {
+                assert_eq!(argumentos.len(), 1);
+                assert!(matches!(&argumentos[0], Expression::Identificador(n) if n == "a"));
+                match &*funcion {
+                    Expression::OperacionBinaria { operador, izquierda, derecha } => {
+                        assert_eq!(*operador, Token::Suma);
+                        assert!(matches!(&**izquierda, Expression::Identificador(n) if n == "b"));
+                        assert!(matches!(&**derecha, Expression::Identificador(n) if n == "c"));
+                    }
+                    _ => panic!("se esperaba (b + c) como función, se obtuvo {funcion:?}"),
+                }
+            }
+            _ => panic!("se esperaba Expresion(Llamada), se obtuvo {stmt:?}"),
+        }
+    }
+
+    #[test]
+    fn metodo_prepone_el_receptor_como_primer_argumento() {
+        // `[1,2,3].map(fn(x){x*2})` → `map([1,2,3], fn(x){x*2})`
+        let stmt = sentencia_unica(parsear("[1,2,3].map(fn(x){x*2});"));
+        match stmt {
+            Statement::Expresion(Expression::Llamada { funcion, argumentos }) => {
+                assert!(matches!(&*funcion, Expression::Identificador(n) if n == "map"));
+                assert_eq!(argumentos.len(), 2);
+                match &argumentos[0] {
+                    Expression::Arreglo(elementos) => {
+                        assert_eq!(elementos.len(), 3);
+                        assert!(matches!(&elementos[0], Expression::Entero(1)));
+                        assert!(matches!(&elementos[1], Expression::Entero(2)));
+                        assert!(matches!(&elementos[2], Expression::Entero(3)));
+                    }
+                    _ => panic!("el primer argumento debe ser el arreglo"),
+                }
+                assert!(matches!(&argumentos[1], Expression::Funcion { .. }));
+            }
+            _ => panic!("se esperaba Expresion(Llamada), se obtuvo {stmt:?}"),
+        }
+    }
+
+    #[test]
+    fn metodo_con_argumentos_adicionales() {
+        // `obj.metodo(1, 2)` → `metodo(obj, 1, 2)`
+        let stmt = sentencia_unica(parsear("obj.metodo(1, 2);"));
+        match stmt {
+            Statement::Expresion(Expression::Llamada { funcion, argumentos }) => {
+                assert!(matches!(&*funcion, Expression::Identificador(n) if n == "metodo"));
+                assert_eq!(argumentos.len(), 3);
+                assert!(matches!(&argumentos[0], Expression::Identificador(n) if n == "obj"));
+                assert!(matches!(&argumentos[1], Expression::Entero(1)));
+                assert!(matches!(&argumentos[2], Expression::Entero(2)));
+            }
+            _ => panic!("se esperaba Expresion(Llamada), se obtuvo {stmt:?}"),
+        }
+    }
+
+    #[test]
+    fn punto_sin_parentesis_sigue_siendo_acceso_a_campo() {
+        // `punto.x` → `punto["x"]`
+        let stmt = sentencia_unica(parsear("punto.x;"));
+        match stmt {
+            Statement::Expresion(Expression::AccesoIndice { izquierda, indice }) => {
+                assert!(matches!(&*izquierda, Expression::Identificador(n) if n == "punto"));
+                assert!(matches!(&*indice, Expression::Cadena(s) if s == "x"));
+            }
+            _ => panic!("se esperaba Expresion(AccesoIndice), se obtuvo {stmt:?}"),
+        }
+    }
+
+    #[test]
+    fn llamada_de_funcion_de_modulo_no_es_metodo() {
+        // `arr.map([1,2,3], fn)` NO se convierte en `map(arr, [1,2,3], fn)`:
+        // `arr` es un módulo de la stdlib y `map` se busca dentro de él.
+        let stmt = sentencia_unica(parsear("arr.map([1,2,3], fn(x){x*2});"));
+        match stmt {
+            Statement::Expresion(Expression::Llamada { funcion, argumentos }) => {
+                match &*funcion {
+                    Expression::AccesoIndice { izquierda, indice } => {
+                        assert!(matches!(&**izquierda, Expression::Identificador(n) if n == "arr"));
+                        assert!(matches!(&**indice, Expression::Cadena(s) if s == "map"));
+                    }
+                    _ => panic!("se esperaba AccesoIndice(arr, \"map\") como función"),
+                }
+                assert_eq!(argumentos.len(), 2);
+                assert!(matches!(&argumentos[0], Expression::Arreglo(_)));
+                assert!(matches!(&argumentos[1], Expression::Funcion { .. }));
+            }
+            _ => panic!("se esperaba Expresion(Llamada), se obtuvo {stmt:?}"),
+        }
+    }
+
+    #[test]
+    fn metodo_sobre_variable_no_modulo_si_es_azucar() {
+        // `lista.map(fn)` donde lista NO es módulo → `map(lista, fn)`
+        let stmt = sentencia_unica(parsear("lista.map(fn(x){x*2});"));
+        match stmt {
+            Statement::Expresion(Expression::Llamada { funcion, argumentos }) => {
+                assert!(matches!(&*funcion, Expression::Identificador(n) if n == "map"));
+                assert_eq!(argumentos.len(), 2);
+                assert!(matches!(&argumentos[0], Expression::Identificador(n) if n == "lista"));
+                assert!(matches!(&argumentos[1], Expression::Funcion { .. }));
+            }
+            _ => panic!("se esperaba Expresion(Llamada), se obtuvo {stmt:?}"),
+        }
+    }
+
+    #[test]
+    fn campo_con_asignacion_sigue_funcionando() {
+        let stmt = sentencia_unica(parsear("obj.campo = 42;"));
+        match stmt {
+            Statement::AsignacionIndice { izquierda, indice, valor } => {
+                assert!(matches!(&*izquierda, Expression::Identificador(n) if n == "obj"));
+                assert!(matches!(&*indice, Expression::Cadena(s) if s == "campo"));
+                assert!(matches!(&valor, Expression::Entero(42)));
+            }
+            _ => panic!("se esperaba AsignacionIndice, se obtuvo {stmt:?}"),
+        }
+    }
+
+    #[test]
+    fn pipe_no_confunde_a_or_ni_a_bitwise() {
+        // `a | b`, `a || b` y `a |> b` son operadores distintos.
+        let stmt_a = sentencia_unica(parsear("a | b;"));
+        assert!(matches!(
+            stmt_a,
+            Statement::Expresion(Expression::OperacionBinaria { operador: Token::Pipe, .. })
+        ));
+
+        let stmt_b = sentencia_unica(parsear("a || b;"));
+        assert!(matches!(
+            stmt_b,
+            Statement::Expresion(Expression::OperacionBinaria { operador: Token::Or, .. })
+        ));
+
+        let stmt_c = sentencia_unica(parsear("a |> b;"));
+        match stmt_c {
+            Statement::Expresion(Expression::Llamada { funcion, argumentos }) => {
+                assert!(matches!(&*funcion, Expression::Identificador(n) if n == "b"));
+                assert_eq!(argumentos.len(), 1);
+                assert!(matches!(&argumentos[0], Expression::Identificador(n) if n == "a"));
+            }
+            _ => panic!("se esperaba Expresion(Llamada), se obtuvo {stmt_c:?}"),
+        }
     }
 }

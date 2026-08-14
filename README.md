@@ -1,9 +1,9 @@
-# Argo v2.1.0
+# Argo v2.2.0
 
 Argo es un lenguaje de programación interpretado, minimalista y extensible, escrito en Rust **sin dependencias externas**.
 
 ```bash
-curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v2.1.0/install.sh | bash
+curl -sSL https://github.com/Erick-arch-bit/Argo-Lang/releases/download/v2.2.0/install.sh | bash
 ```
 
 ## Características
@@ -68,7 +68,7 @@ argo --version        Muestra la versión actual
 ```
 
 ```rust
-print("Hola desde Argo v2.1.0");
+print("Hola desde Argo v2.2.0");
 
 // Structs y Enums
 struct Rect { x, y }
